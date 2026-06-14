@@ -1,13 +1,23 @@
+// @vitest-environment node
+//
+// This suite reads locale JSON from disk. We deliberately use Node's `node:fs`
+// / `node:path` (not Vite's JSON loader) so we see the raw message structure
+// instead of the `{ t, b }` descriptors that @intlify/unplugin-vue-i18n
+// compiles `.json` imports into. Those Node built-ins are only available when
+// the test environment is `node` — under the project default `jsdom` they are
+// externalised and their named exports vanish (`resolve is not a function`).
+// This file does no DOM work, so running it under node is strictly better.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { describe, it, expect } from 'vitest'
 
 import { i18n } from '@/i18n'
 
-// Read raw JSON to avoid Vite/i18n plugin transforms
-const enRaw = JSON.parse(readFileSync(resolve(__dirname, '../locales/en.json'), 'utf-8'))
-const zhCNRaw = JSON.parse(readFileSync(resolve(__dirname, '../locales/zh_CN.json'), 'utf-8'))
+const here = fileURLToPath(new URL('./', import.meta.url))
+const enRaw = JSON.parse(readFileSync(resolve(here, '../locales/en.json'), 'utf-8'))
+const zhCNRaw = JSON.parse(readFileSync(resolve(here, '../locales/zh_CN.json'), 'utf-8'))
 
 describe('i18n configuration', () => {
   it('has en messages available', () => {

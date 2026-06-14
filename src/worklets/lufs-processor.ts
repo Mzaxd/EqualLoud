@@ -31,6 +31,16 @@ class LufsProcessor extends AudioWorkletProcessor {
   readonly hopSizeSamples: number
   readonly shortTermBlockCount: number
   readonly updateIntervalSamples: number
+  /**
+   * Warm-up threshold (in samples) below which we still emit "early" blocks so
+   * balancing can start before the full 400 ms ring buffer is filled. Once
+   * `samplesAccumulated` reaches this, the first early block is produced; from
+   * there early blocks fire every `hopSizeSamples` until the ring is full, at
+   * which point standard hop-based blocks take over. ~50% of the window keeps
+   * the early estimate reasonably stable (a half window is far less noisy than
+   * a quarter) while cutting time-to-first-measurement from ~400 ms to ~200 ms.
+   */
+  readonly earlyBlockThreshold: number
 
   // Filter states (typed arrays)
   hs_x1: Float32Array
@@ -65,6 +75,13 @@ class LufsProcessor extends AudioWorkletProcessor {
     this.hopSizeSamples = Math.max(1, Math.floor(this.blockSizeSamples * (1 - overlap)))
     this.shortTermBlockCount = Math.ceil(3000 / (blockMs * (1 - overlap)))
     this.updateIntervalSamples = Math.max(128, Math.floor(0.1 * sr)) // ~10 Hz
+    // Emit early blocks once half the window has been accumulated. Clamped to
+    // at least one hop so we never produce two early blocks from the same
+    // quantum of samples.
+    this.earlyBlockThreshold = Math.max(
+      this.hopSizeSamples,
+      Math.floor(this.blockSizeSamples * 0.5),
+    )
 
     this.hs_x1 = new Float32Array(this.channels)
     this.hs_x2 = new Float32Array(this.channels)
@@ -196,24 +213,26 @@ class LufsProcessor extends AudioWorkletProcessor {
         this.samplesAccumulated++
       }
 
-      // Create a new block every hop, but only after ring buffer is full
-      if (
-        this.samplesSinceLastBlock >= this.hopSizeSamples &&
-        this.samplesAccumulated >= this.blockSizeSamples
-      ) {
+      // Standard hop-based blocks: fire only after the ring is full. These are
+      // the accurate, fully-overlapped measurements that drive steady-state
+      // balancing.
+      const warmedUp = this.samplesAccumulated >= this.blockSizeSamples
+      if (warmedUp && this.samplesSinceLastBlock >= this.hopSizeSamples) {
         this.samplesSinceLastBlock -= this.hopSizeSamples
-        const blockLufs = this.computeCurrentBlockLufs()
-        if (blockLufs > ABSOLUTE_THRESHOLD) {
-          this.blockLoudnesses.push(blockLufs)
-          if (this.blockLoudnesses.length > MAX_INTEGRATED_BLOCKS) {
-            this.blockLoudnesses.shift()
-          }
-        }
-        this.shortTermBlocks.push(blockLufs)
-        if (this.shortTermBlocks.length > this.shortTermBlockCount) {
-          this.shortTermBlocks.shift()
-        }
-        this.blockCount++
+        this.emitBlock(this.computeCurrentBlockLufs())
+      } else if (
+        !warmedUp &&
+        this.samplesAccumulated >= this.earlyBlockThreshold &&
+        this.samplesSinceLastBlock >= this.hopSizeSamples
+      ) {
+        // Early block: ring not full yet, but we have enough samples (≥ half
+        // window) to produce a usable estimate. Normalise by the actual count
+        // of accumulated samples (NOT blockSize) so the partial window still
+        // yields a correct mean square. This cuts time-to-first-measurement
+        // from ~400 ms to ~200 ms; once the ring fills, standard blocks take
+        // over seamlessly because both paths push identical-shaped values.
+        this.samplesSinceLastBlock -= this.hopSizeSamples
+        this.emitBlock(this.computeEarlyBlockLufs())
       }
 
       // Emit ~10 Hz aggregated results
@@ -256,6 +275,45 @@ class LufsProcessor extends AudioWorkletProcessor {
     }
     if (sumWeighted <= 0) return -Infinity
     return -0.691 + 10 * Math.log10(sumWeighted)
+  }
+
+  /**
+   * Early-block loudness: same K-weighted energy as {@link computeCurrentBlockLufs}
+   * but normalised by the number of samples actually accumulated so far (which is
+   * < blockSizeSamples during warm-up). This yields a correct mean square over a
+   * shorter window — noisier than a full block, but accurate enough to drive a
+   * first gain pass ~200 ms in instead of ~400 ms.
+   */
+  private computeEarlyBlockLufs(): number {
+    const n = Math.max(1, this.samplesAccumulated)
+    let sumWeighted = 0
+    for (let ch = 0; ch < this.channels; ch++) {
+      const channelSum = this.sumSquares[ch] ?? 0
+      const meanSquare = channelSum / n
+      const weight = CHANNEL_WEIGHTS[ch] ?? 1.0
+      sumWeighted += weight * meanSquare
+    }
+    if (sumWeighted <= 0) return -Infinity
+    return -0.691 + 10 * Math.log10(sumWeighted)
+  }
+
+  /**
+   * Push one block loudness into the histories and bump the block counter.
+   * Centralised so the warm-up early-block path and the steady-state hop path
+   * stay identical in shape (both feed shortTerm + integrated + blockCount).
+   */
+  private emitBlock(blockLufs: number): void {
+    if (blockLufs > ABSOLUTE_THRESHOLD) {
+      this.blockLoudnesses.push(blockLufs)
+      if (this.blockLoudnesses.length > MAX_INTEGRATED_BLOCKS) {
+        this.blockLoudnesses.shift()
+      }
+    }
+    this.shortTermBlocks.push(blockLufs)
+    if (this.shortTermBlocks.length > this.shortTermBlockCount) {
+      this.shortTermBlocks.shift()
+    }
+    this.blockCount++
   }
 
   private getMomentary(): number {

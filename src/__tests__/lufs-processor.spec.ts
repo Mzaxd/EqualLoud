@@ -298,3 +298,77 @@ describe('lufs-processor AudioWorklet', () => {
     expect(postedMessages.length).toBe(0)
   })
 })
+
+// Early-block warm-up: the worklet emits blocks before the 400 ms ring buffer
+// is full so balancing can start at ~200 ms instead of ~400 ms.
+describe('lufs-processor early-block warm-up', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  type ProcInternals = {
+    blockSizeSamples: number
+    hopSizeSamples: number
+    earlyBlockThreshold: number
+    samplesAccumulated: number
+    blockCount: number
+    process: (
+      inputs: Array<Array<Float32Array | undefined>>,
+      outputs: Array<Array<Float32Array>>,
+    ) => boolean
+  }
+
+  it('emits a block before the ring buffer is full (early block)', async () => {
+    const { ctor } = await loadProcessorCtor()
+    const proc = new ctor() as unknown as ProcInternals
+
+    // sampleRate=1000 => blockSizeSamples=400, hop=100, earlyBlockThreshold=200.
+    // Feed exactly the early threshold: ring is half full (not full), but an
+    // early block must fire because samplesAccumulated >= earlyBlockThreshold.
+    const n = proc.earlyBlockThreshold
+    expect(n).toBeLessThan(proc.blockSizeSamples)
+    const left = new Float32Array(n).fill(0.1)
+    const right = new Float32Array(n).fill(0.1)
+    const outputs = [[new Float32Array(n), new Float32Array(n)]]
+    proc.process([[left, right]], outputs)
+
+    expect(proc.samplesAccumulated).toBe(n)
+    expect(proc.samplesAccumulated).toBeLessThan(proc.blockSizeSamples)
+    expect(proc.blockCount).toBeGreaterThanOrEqual(1)
+  })
+
+  it('emits no block before the early threshold (silent warm-up)', async () => {
+    const { ctor } = await loadProcessorCtor()
+    const proc = new ctor() as unknown as ProcInternals
+
+    // Feed less than earlyBlockThreshold: nothing should fire yet.
+    const n = proc.earlyBlockThreshold - 1
+    const left = new Float32Array(n).fill(0.1)
+    const right = new Float32Array(n).fill(0.1)
+    const outputs = [[new Float32Array(n), new Float32Array(n)]]
+    proc.process([[left, right]], outputs)
+
+    expect(proc.blockCount).toBe(0)
+  })
+
+  it('early block loudness is finite for a real signal', async () => {
+    const { ctor, postedMessages } = await loadProcessorCtor()
+    const proc = new ctor() as unknown as ProcInternals
+
+    // Feed enough samples to cross BOTH the early threshold and the next ~10 Hz
+    // update boundary, so a LUFS message carrying the early measurement is
+    // posted while the ring is still not full. updateIntervalSamples≈128 at
+    // sampleRate=1000; we go past earlyBlockThreshold(200)+updateInterval(128).
+    const n = proc.earlyBlockThreshold + 150
+    const left = Float32Array.from({ length: n }, (_, i) => Math.sin(i / 10) * 0.2)
+    const right = Float32Array.from({ length: n }, (_, i) => Math.sin(i / 10) * 0.2)
+    const outputs = [[new Float32Array(n), new Float32Array(n)]]
+    proc.process([[left, right]], outputs)
+
+    expect(proc.blockCount).toBeGreaterThanOrEqual(1)
+    expect(proc.samplesAccumulated).toBeLessThan(proc.blockSizeSamples)
+    const msg = postedMessages.find((m) => m.blockCount > 0)
+    expect(msg).toBeTruthy()
+    expect(Number.isFinite(msg!.momentary)).toBe(true)
+  })
+})

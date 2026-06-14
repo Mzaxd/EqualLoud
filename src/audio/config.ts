@@ -41,12 +41,36 @@ export {
 /**
  * Time constant (seconds) used by GainNode.setTargetAtTime when applying a new
  * gain decision. 50 ms glides between the ~10 Hz balance updates without
- * zipper clicks.
+ * zipper clicks. Used for gain *increases* (boosting quiet content toward the
+ * target); gain decreases use the faster {@link GAIN_ATTACK_TC}.
  */
 export const GAIN_SMOOTH_TC = 0.05
 
+/**
+ * Faster time constant for gain *decreases* (attenuating loud content). A gain
+ * drop never causes a click (there is less energy, never a discontinuity that
+ * exceeds the previous sample), so we can attack faster than the release —
+ * this lets a too-loud tab be pulled down in ~60 ms (3τ) instead of ~150 ms,
+ * which is exactly the case where fast response matters most (a blaring video
+ * at start). Boosts still use {@link GAIN_SMOOTH_TC} to avoid zipper noise on
+ * the way up.
+ */
+export const GAIN_ATTACK_TC = 0.02
+
 /** How often the content script reports its measured LUFS to the SW (Hz). */
 export const LUFS_REPORT_HZ = 10
+
+/**
+ * Boosted report rate used during the first ~1 s after a primary media element
+ * attaches. Faster heartbeats during warm-up cut the message-alignment latency
+ * from ~100 ms to ~40 ms, so the SW sees the first usable measurement within a
+ * couple of quantum ticks instead of waiting up to one full 10 Hz period. After
+ * {@link BOOST_REPORT_MS} elapses the rate drops back to {@link LUFS_REPORT_HZ}.
+ */
+export const BOOST_REPORT_HZ = 25
+
+/** Wall-clock window after attach during which the boosted report rate applies. */
+export const BOOST_REPORT_MS = 1000
 
 // ---------------------------------------------------------------------------
 // Limiter defaults (output protection against post-boost clipping)

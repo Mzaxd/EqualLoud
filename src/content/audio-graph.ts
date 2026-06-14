@@ -24,7 +24,7 @@
  * at least attenuate (PRD §10.1, §10.5).
  */
 
-import { GAIN_SMOOTH_TC } from '@/audio/config'
+import { GAIN_ATTACK_TC, GAIN_SMOOTH_TC } from '@/audio/config'
 import { dbToGain } from '@/audio/lufs'
 import type { LimiterSettings } from '@/messages/protocol'
 import lufsProcessorUrl from '@/worklets/lufs-processor?worker&url'
@@ -115,6 +115,11 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
   const limiter = ctx.createDynamicsCompressor()
   applyLimiter(limiter, ctx.currentTime, DEFAULT_LIMITER_OFF)
 
+  // Tracks the last gain we applied (dB) so setGain can pick a time constant
+  // based on direction: attack fast when pulling a loud tab down, release slow
+  // when boosting a quiet one up. Initial GainNode.gain.value is 1.0 == 0 dB.
+  let currentGainDb = 0
+
   // Playback chain: source -> gain -> limiter -> destination
   source.connect(gain)
   gain.connect(limiter)
@@ -160,7 +165,14 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
   return {
     setGain(gainDb: number) {
       if (ctx.state === 'closed') return
-      gain.gain.setTargetAtTime(dbToGain(gainDb), ctx.currentTime, GAIN_SMOOTH_TC)
+      // Direction-aware smoothing: a decrease (loud → target) attacks fast
+      // because reducing gain never clicks; an increase (quiet → target)
+      // releases slowly to avoid zipper noise. This is the asymmetry you want
+      // for a loudness balancer — the painful case is a too-loud source, and
+      // that's the one we now resolve in ~60 ms instead of ~150 ms.
+      const tc = gainDb < currentGainDb ? GAIN_ATTACK_TC : GAIN_SMOOTH_TC
+      gain.gain.setTargetAtTime(dbToGain(gainDb), ctx.currentTime, tc)
+      currentGainDb = gainDb
     },
     setLimiter(settings) {
       applyLimiter(limiter, ctx.currentTime, settings)

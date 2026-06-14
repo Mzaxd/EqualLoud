@@ -7,7 +7,7 @@
  * service worker ~10 Hz, and apply the gain decisions the SW sends back.
  */
 
-import { LUFS_REPORT_HZ } from '@/audio/config'
+import { BOOST_REPORT_HZ, BOOST_REPORT_MS, LUFS_REPORT_HZ } from '@/audio/config'
 import type { SwToContentMessage } from '@/messages/protocol'
 
 import { attachAudioGraph, resumeSharedContext } from './audio-graph'
@@ -41,6 +41,13 @@ function startEqualLoud(): void {
   let lastBlockCount = 0
   let hasPrimary = false
   let unsubLufs: (() => void) | null = null
+  /**
+   * Epoch ms when the current primary attached. Used to run a faster LUFS
+   * heartbeat during the first {@link BOOST_REPORT_MS} so the SW sees the first
+   * measurement (and can issue the first gain decision) with ~40 ms alignment
+   * instead of ~100 ms. Reset on every primary change.
+   */
+  let primaryAttachedAt = 0
 
   // Wire LUFS reporting to whichever element is currently primary.
   manager.onPrimaryChange = (primary) => {
@@ -49,6 +56,7 @@ function startEqualLoud(): void {
     unsubLufs = null
     hasPrimary = primary !== null
     if (primary) {
+      primaryAttachedAt = Date.now()
       const handle = manager.getHandleFor(primary)
       if (handle) {
         lastShortTerm = -Infinity
@@ -67,18 +75,30 @@ function startEqualLoud(): void {
     }
   }
 
-  // ~10 Hz heartbeat: report LUFS so the SW can balance and survive restarts.
-  // Note: per-tab balance bypass does NOT gate this — measurement must keep
-  // running while bypassed so re-enabling snaps to the right gain instantly.
-  const reportTimer = window.setInterval(() => {
-    if (!hasPrimary) return
-    notifySw({
-      type: 'LUFS_REPORT',
-      tabId,
-      shortTerm: lastShortTerm,
-      blockCount: lastBlockCount,
-    })
-  }, 1000 / LUFS_REPORT_HZ)
+  // LUFS heartbeat: report measurements so the SW can balance and survive
+  // restarts. We use a self-rescheduling timeout instead of a fixed interval so
+  // the period can shrink during warm-up: the first {@link BOOST_REPORT_MS}
+  // after a primary attaches runs at {@link BOOST_REPORT_HZ} (≈40 ms alignment),
+  // then drops to the steady {@link LUFS_REPORT_HZ} (≈100 ms). This shaves
+  // ~60 ms off time-to-first-gain-decision with no steady-state cost.
+  let reportTimer: number | null = null
+  const scheduleReport = () => {
+    const sinceAttach = Date.now() - primaryAttachedAt
+    const hz = sinceAttach < BOOST_REPORT_MS ? BOOST_REPORT_HZ : LUFS_REPORT_HZ
+    reportTimer = window.setTimeout(reportAndReschedule, 1000 / hz)
+  }
+  const reportAndReschedule = () => {
+    if (hasPrimary) {
+      notifySw({
+        type: 'LUFS_REPORT',
+        tabId,
+        shortTerm: lastShortTerm,
+        blockCount: lastBlockCount,
+      })
+    }
+    scheduleReport()
+  }
+  scheduleReport()
 
   // React to SW directives.
   const off = onSwMessage((msg: SwToContentMessage) => {
@@ -126,7 +146,7 @@ function startEqualLoud(): void {
   // extension is reloaded on an open tab — without this, patchHistoryApi would
   // wrap an already-wrapped method and nav callbacks would accumulate).
   const onPageHide = () => {
-    window.clearInterval(reportTimer)
+    if (reportTimer !== null) window.clearTimeout(reportTimer)
     off()
     window.removeEventListener('popstate', onNav)
     window.removeEventListener('pointerdown', resumeAll)
