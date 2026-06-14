@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Loudness DD 测试音源</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 20px; color: #1a1a2e; line-height: 1.6; }
+  h1 { color: #48bb78; margin-bottom: 4px; }
+  .subtitle { color: #888; margin-top: 0; }
+  .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin: 16px 0; }
+  button { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 10px 16px; cursor: pointer; font-size: 14px; margin: 4px 4px 4px 0; transition: background 0.15s; }
+  button:hover { background: #38a169; }
+  button.secondary { background: #e2e8f0; color: #1a1a2e; }
+  button.secondary:hover { background: #cbd5e0; }
+  input[type=range] { width: 100%; margin: 8px 0; }
+  .preset { display: flex; flex-wrap: wrap; gap: 6px; }
+  .gain-display { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 28px; color: #48bb78; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th, td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; }
+  th { background: #f7fafc; font-weight: 600; }
+  td.gain-pos { color: #48bb78; font-weight: 600; }
+  td.gain-neg { color: #e53e3e; font-weight: 600; }
+  .note { background: #fef5e7; border-left: 4px solid #ed8936; padding: 12px 14px; margin: 14px 0; font-size: 13px; border-radius: 0 8px 8px 0; }
+  .tip { background: #e6fffa; border-left: 4px solid #48bb78; padding: 12px 14px; margin: 14px 0; font-size: 13px; border-radius: 0 8px 8px 0; }
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', monospace; }
+  ol, ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>🔊 Loudness DD 测试音源</h1>
+<p class="subtitle">确定性测试材料 · Web Audio 合成粉红噪声 · 响度精确可控</p>
+
+<div class="note">
+<strong>为什么用粉噪?</strong> 粉噪频谱接近自然声音(音乐/语音的近似),响度稳定没有瞬时峰值波动,LUFS 几秒内就稳定,适合做测试基准。
+比"随便找个视频"靠谱得多——那个视频响度可能恰好接近 -14,所以调整只有 ±2dB,根本听不出来。
+</div>
+
+<div class="card">
+  <h3>① 启动音源</h3>
+  <button id="playBtn">▶ 播放</button>
+  <button id="stopBtn" class="secondary">⏹ 停止</button>
+  <div style="margin-top:12px;">
+    输出增益:<span class="gain-display" id="gainDisplay">-20 dB</span>
+  </div>
+  <input type="range" id="gainSlider" min="-60" max="0" value="-20" step="1">
+</div>
+
+<div class="card">
+  <h3>② 一键预设</h3>
+  <div class="preset">
+    <button data-gain="-45">极轻 (-45)</button>
+    <button data-gain="-30">轻 (-30)</button>
+    <button data-gain="-20">中 (-20)</button>
+    <button data-gain="-12">较响 (-12)</button>
+    <button data-gain="-4">很响 (-4)</button>
+  </div>
+  <p style="font-size:12px;color:#888;margin-top:10px;">
+    数字是测试页的输出增益(dBFS)。粉噪的实际 LUFS 会比这个值再低约 10 dB(粉噪 RMS 低于峰值)。
+  </p>
+</div>
+
+<div class="card">
+  <h3>③ 预期行为(target = -14 时)</h3>
+  <p>操作:扩展 popup target 设 <strong>-14</strong> → 点播放 → <strong>等 3~5 秒</strong>(LUFS 累积) → 看 popup 里这个 tab 的 <strong>gain 数值</strong>。</p>
+  <table>
+    <tr><th>测试页增益</th><th>近似 LUFS</th><th>预期 gain</th><th>听感</th></tr>
+    <tr><td>-45</td><td>~-55</td><td class="gain-pos">+12 (触上限)</td><td>强烈变响</td></tr>
+    <tr><td>-30</td><td>~-40</td><td class="gain-pos">+12 (触上限)</td><td>明显变响</td></tr>
+    <tr><td>-20</td><td>~-30</td><td class="gain-pos">+12 (触上限)</td><td>明显变响</td></tr>
+    <tr><td>-12</td><td>~-22</td><td class="gain-pos">+8</td><td>变响</td></tr>
+    <tr><td>-4</td><td>~-14</td><td>~0 (已平衡)</td><td>几乎不变</td></tr>
+  </table>
+  <p style="font-size:13px;">
+    再试试拖 popup 的 target:<br>
+    • 拖到 <strong>-30</strong> → 所有 gain 变负(衰减,变小)<br>
+    • 拖到 <strong>-5</strong> → 极轻的也提升到 +12(变响)
+  </p>
+</div>
+
+<div class="card">
+  <h3>④ 多 tab 平衡(扩展的核心价值)</h3>
+  <p>单个 tab 只验证"增益调整"。真正的价值是<strong>多个 tab 互相平衡</strong>:</p>
+  <ol>
+    <li>开<strong>两个标签页</strong>都打开本页(复制 URL 到新标签)</li>
+    <li>Tab A 设 <strong>-45</strong>(极轻),Tab B 设 <strong>-4</strong>(很响)</li>
+    <li>都点播放,扩展 target 保持 -14</li>
+    <li>等 5 秒——Tab A 的 gain 应到 <strong>+12</strong>,Tab B 应到 <strong>~0</strong></li>
+    <li>两个 tab 听起来响度<strong>趋近</strong>,这就是"平衡"</li>
+  </ol>
+</div>
+
+<div class="note">
+<strong>排查:</strong>如果扩展图标<strong>没显示绿色数字</strong>,说明这个页没被捕获(可能 Chrome 没把它标成 audible)。把测试页增益调到 -4 大声播放、或刷新扩展重试。Badge 有数字是一切的前提。
+</div>
+
+<div id="status" style="margin-top:16px;color:#888;font-family:monospace;">状态:未播放</div>
+
+<script>
+const playBtn = document.getElementById('playBtn')
+const stopBtn = document.getElementById('stopBtn')
+const gainSlider = document.getElementById('gainSlider')
+const gainDisplay = document.getElementById('gainDisplay')
+const status = document.getElementById('status')
+
+let audioCtx = null
+let source = null
+let gainNode = null
+let noiseBuffer = null
+
+function dbToGain(db) {
+  return Math.pow(10, db / 20)
+}
+
+// Voss-McCartney 粉红噪声
+function createPinkNoise(ctx) {
+  const length = ctx.sampleRate * 5
+  const buffer = ctx.createBuffer(2, length, ctx.sampleRate)
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buffer.getChannelData(ch)
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0
+    for (let i = 0; i < length; i++) {
+      const white = Math.random() * 2 - 1
+      b0 = 0.99886 * b0 + white * 0.0555179
+      b1 = 0.99332 * b1 + white * 0.0750759
+      b2 = 0.96900 * b2 + white * 0.1538520
+      b3 = 0.86650 * b3 + white * 0.3104856
+      b4 = 0.55000 * b4 + white * 0.5329522
+      b5 = -0.7616 * b5 - white * 0.0168980
+      data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.115926) * 0.11
+      b6 = white * 0.5362
+    }
+  }
+  return buffer
+}
+
+function start() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+  }
+  audioCtx.resume()
+  if (!noiseBuffer) {
+    noiseBuffer = createPinkNoise(audioCtx)
+  }
+  if (source) {
+    try { source.stop() } catch (e) { /* ignore */ }
+  }
+  source = audioCtx.createBufferSource()
+  source.buffer = noiseBuffer
+  source.loop = true
+  gainNode = audioCtx.createGain()
+  gainNode.gain.value = dbToGain(parseFloat(gainSlider.value))
+  source.connect(gainNode)
+  gainNode.connect(audioCtx.destination)
+  source.start()
+  status.textContent = '状态:播放中 · 输出 ' + gainSlider.value + ' dB'
+}
+
+function stop() {
+  if (source) {
+    try { source.stop() } catch (e) { /* ignore */ }
+    source = null
+  }
+  status.textContent = '状态:已停止'
+}
+
+playBtn.addEventListener('click', start)
+stopBtn.addEventListener('click', stop)
+
+gainSlider.addEventListener('input', () => {
+  gainDisplay.textContent = gainSlider.value + ' dB'
+  if (gainNode && audioCtx) {
+    gainNode.gain.setTargetAtTime(dbToGain(parseFloat(gainSlider.value)), audioCtx.currentTime, 0.02)
+  }
+})
+
+document.querySelectorAll('[data-gain]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const g = btn.getAttribute('data-gain')
+    gainSlider.value = g
+    gainDisplay.textContent = g + ' dB'
+    if (gainNode && audioCtx) {
+      gainNode.gain.setTargetAtTime(dbToGain(parseFloat(g)), audioCtx.currentTime, 0.02)
+    }
+  })
+})
+</script>
+</body>
+</html>

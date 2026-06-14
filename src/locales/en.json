@@ -1,0 +1,81 @@
+{
+  "popup": {
+    "title": "EqualLoud",
+    "status": {
+      "balancing": "Balancing {count} tab(s)",
+      "waiting": "Waiting for audio...",
+      "disabled": "Volume balancing is off"
+    }
+  },
+  "footer": {
+    "brand": "EqualLoud",
+    "author": "github.com/dsh0416/EqualLoud"
+  },
+  "autobalance": {
+    "title": "Target Volume",
+    "target": "Target LUFS",
+    "presets": {
+      "broadcast": "Broadcast",
+      "streaming": "Streaming",
+      "podcast": "Podcast",
+      "loud": "Loud"
+    }
+  },
+  "limiter": {
+    "title": "Output Limiter",
+    "tooltip": {
+      "enable": "Enable limiter",
+      "disable": "Disable limiter"
+    },
+    "on": "ON",
+    "off": "OFF",
+    "description": "Prevents clipping when multiple tabs are boosted.",
+    "ceiling": "Threshold",
+    "advanced": "Advanced Settings",
+    "ratio": "Ratio",
+    "attack": "Attack",
+    "release": "Release",
+    "knee": "Knee",
+    "hints": {
+      "attack": {
+        "fast": "Fast - catches transients",
+        "balanced": "Balanced",
+        "slow": "Slow - more natural"
+      },
+      "release": {
+        "fast": "Fast - punchy",
+        "balanced": "Balanced",
+        "slow": "Slow - smooth"
+      },
+      "knee": {
+        "hard": "Hard knee - precise limiting",
+        "soft": "Soft knee - smoother",
+        "verySoft": "Very soft - gentle compression"
+      }
+    },
+    "active": "Limiter active"
+  },
+  "tabs": {
+    "empty": {
+      "title": "Waiting for audio...",
+      "hint": "Open a tab with audio and it will be balanced automatically"
+    },
+    "balance": {
+      "onHint": "Volume balance: ON (click to bypass / A-B)",
+      "offHint": "Volume balance: OFF — passthrough (click to re-enable)",
+      "bypass": "BYPASS"
+    },
+    "status": {
+      "collecting": "Analyzing...",
+      "ready": "Balanced"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "expand": "Settings",
+    "collapse": "Close settings"
+  },
+  "lufs": {
+    "collecting": "Analyzing..."
+  }
+}

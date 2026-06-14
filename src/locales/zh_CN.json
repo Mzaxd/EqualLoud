@@ -1,0 +1,81 @@
+{
+  "popup": {
+    "title": "EqualLoud",
+    "status": {
+      "balancing": "正在平衡 {count} 个标签页",
+      "waiting": "正在等待音频播放...",
+      "disabled": "音量平衡已关闭"
+    }
+  },
+  "footer": {
+    "brand": "EqualLoud",
+    "author": "github.com/dsh0416/EqualLoud"
+  },
+  "autobalance": {
+    "title": "目标音量",
+    "target": "目标 LUFS",
+    "presets": {
+      "broadcast": "广播",
+      "streaming": "流媒体",
+      "podcast": "播客",
+      "loud": "响亮"
+    }
+  },
+  "limiter": {
+    "title": "输出压限",
+    "tooltip": {
+      "enable": "启用压限",
+      "disable": "禁用压限"
+    },
+    "on": "开",
+    "off": "关",
+    "description": "防止多个标签页增益后出现削波。",
+    "ceiling": "阈值",
+    "advanced": "高级设置",
+    "ratio": "比率",
+    "attack": "起动",
+    "release": "释放",
+    "knee": "拐点",
+    "hints": {
+      "attack": {
+        "fast": "快速 - 捕捉瞬态",
+        "balanced": "平衡",
+        "slow": "较慢 - 更自然"
+      },
+      "release": {
+        "fast": "快速 - 有力度",
+        "balanced": "平衡",
+        "slow": "较慢 - 更顺滑"
+      },
+      "knee": {
+        "hard": "硬拐点 - 精确限幅",
+        "soft": "软拐点 - 更平滑",
+        "verySoft": "非常软 - 轻柔压缩"
+      }
+    },
+    "active": "压限已启用"
+  },
+  "tabs": {
+    "empty": {
+      "title": "正在等待音频播放...",
+      "hint": "打开一个播放音频的标签页，会自动平衡"
+    },
+    "balance": {
+      "onHint": "音量平衡：开（点击旁通 / A-B 对比）",
+      "offHint": "音量平衡：关 — 直通原始音量（点击重新开启）",
+      "bypass": "直通"
+    },
+    "status": {
+      "collecting": "分析中...",
+      "ready": "已平衡"
+    }
+  },
+  "settings": {
+    "title": "设置",
+    "expand": "设置",
+    "collapse": "关闭设置"
+  },
+  "lufs": {
+    "collecting": "分析中..."
+  }
+}
