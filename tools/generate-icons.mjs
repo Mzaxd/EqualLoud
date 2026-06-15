@@ -9,7 +9,7 @@
  * Outputs (overwrites) — names are fixed; manifest.config.ts & index.html
  * reference them by name, so do NOT rename:
  *   public/logo@16w.png  logo@32w.png  logo@48w.png  logo@128w.png
- *   public/logo.png      (1024 px master copy of the source)
+
  *   public/favicon.ico   (ICO wrapping a 32×32 PNG)
  *
  * Workflow:
@@ -73,7 +73,6 @@ await render(16, 'logo@16w.png')
 await render(32, 'logo@32w.png')
 await render(48, 'logo@48w.png')
 await render(128, 'logo@128w.png')
-await render(1024, 'logo.png')
 
 // favicon.ico — 32×32 PNG inside an ICO wrapper
 const favPng = await sharp(source)

@@ -16,6 +16,7 @@
  *
  * Run: node tools/process-source-icon.mjs
  */
+import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -24,6 +25,17 @@ import sharp from 'sharp'
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
 const src = resolve(root, '下载.jpeg')
+
+if (!existsSync(src)) {
+  console.error(
+    `Source image not found: 下载.jpeg\n` +
+      `This script is a one-off that crops the original AI-generated icon source.\n` +
+      `The processed result already lives at public/icons/source.png.\n` +
+      `To re-skin: drop a new square image (≥1024×1024) at the repo root as\n` +
+      `"下载.jpeg", then re-run this script.`,
+  )
+  process.exit(1)
+}
 
 const meta = await sharp(src).metadata()
 const W = meta.width
@@ -106,7 +118,6 @@ repaintCorner([0, CORNER], [ch - CORNER, ch]) // BL
 repaintCorner([cw - CORNER, cw], [ch - CORNER, ch]) // BR
 
 const out = resolve(root, 'public/icons/source.png')
-console.log(`buffer sanity: cr.length=${cr.length}, expected=${cw * ch * CC}`)
 await sharp(cr, { raw: { width: cw, height: ch, channels: CC } })
   .resize(1024, 1024, { fit: 'cover', position: 'center' })
   .png()
