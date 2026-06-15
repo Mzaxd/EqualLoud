@@ -68,7 +68,11 @@ describe('B — single-tab convergence to target', () => {
       { scenario: 'B1-quiet', targetLufs: TARGET, durationSec: 14 },
     )
     assertConverged(tab)
-    expect(tab.metrics.startLufs).toBeLessThan(TARGET - 5)
+    // Check the raw source level via the first finite measured LUFS (pre-gain),
+    // not startLufs (which is the first *output* and may already have gain
+    // applied when MIN_BLOCKS is low enough for early balancing).
+    const firstMeasured = tab.trace.find((r) => Number.isFinite(r.measuredLufs))!.measuredLufs
+    expect(firstMeasured).toBeLessThan(TARGET - 5)
     const finalGain = tab.trace[tab.trace.length - 1]!.appliedGainDb
     expect(finalGain, `gain ${finalGain} should be a positive boost`).toBeGreaterThan(3)
   })
@@ -86,7 +90,11 @@ describe('B — single-tab convergence to target', () => {
       { scenario: 'B2-loud', targetLufs: TARGET, durationSec: 14 },
     )
     assertConverged(tab)
-    expect(tab.metrics.startLufs).toBeGreaterThan(TARGET + 2)
+    // Check the raw source level via the first finite measured LUFS (pre-gain).
+    // trace[0].measuredLufs may be -Infinity (no full LUFS block yet), so find
+    // the first finite one.
+    const firstMeasured = tab.trace.find((r) => Number.isFinite(r.measuredLufs))!.measuredLufs
+    expect(firstMeasured).toBeGreaterThan(TARGET + 2)
     const finalGain = tab.trace[tab.trace.length - 1]!.appliedGainDb
     expect(finalGain, `gain ${finalGain} should be negative (attenuation)`).toBeLessThan(0)
   })

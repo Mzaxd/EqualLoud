@@ -23,13 +23,13 @@ function mockWindowSetInterval(): void {
 }
 
 describe('hasEnoughSamples', () => {
-  it('returns false when blockCount < MIN_BLOCKS (3)', () => {
-    const lufs: TabLufs = { shortTerm: -20, blockCount: 2 }
+  it('returns false when blockCount < MIN_BLOCKS (1)', () => {
+    const lufs: TabLufs = { shortTerm: -20, blockCount: 0 }
     expect(hasEnoughSamples(lufs)).toBe(false)
   })
 
-  it('returns true when blockCount >= 3', () => {
-    const lufs: TabLufs = { shortTerm: -20, blockCount: 3 }
+  it('returns true when blockCount >= 1', () => {
+    const lufs: TabLufs = { shortTerm: -20, blockCount: 1 }
     expect(hasEnoughSamples(lufs)).toBe(true)
   })
 })

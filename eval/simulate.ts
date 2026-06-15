@@ -23,7 +23,7 @@
  *
  * # The blockCount subtlety
  *
- * `computeBalanceGains` gates on `hasEnoughSamples(blockCount >= 3)`. That
+ * `computeBalanceGains` gates on `hasEnoughSamples(blockCount >= MIN_BLOCKS)`. That
  * blockCount, in production, comes from the worklet's `this.blockCount`
  * (lufs-processor.ts), which is incremented **once per hop regardless of the
  * −70 LUFS absolute gate** — i.e. it counts every block the ring buffer emits,

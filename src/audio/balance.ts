@@ -8,9 +8,11 @@
  */
 
 // Minimum blocks required before short-term LUFS is trustworthy enough to
-// drive a gain decision. Kept low (3 ≈ 300 ms of audio) so balancing kicks
-// in quickly after capture starts, instead of waiting ~1.3 s for 10 blocks.
-export const MIN_BLOCKS_FOR_RELIABLE_LUFS = 3
+// drive a gain decision. Tuned from 3→1 by the offline tuner (eval/tune.ts):
+// 1 block ≈ 100 ms, so balancing kicks in within the first heartbeat instead
+// of after ~300 ms. This cuts perceived startup latency on tab-switch without
+// measurably increasing ripple (Stage-1 sweep confirmed stable convergence).
+export const MIN_BLOCKS_FOR_RELIABLE_LUFS = 1
 
 // Lower gain floor applied to every balanced tab (matches the slider floor).
 export const DEFAULT_MIN_GAIN = -60

@@ -33,6 +33,6 @@ test.describe('EqualLoud smoke', () => {
     expect(state.settings.targetLufs).toBe(-14)
     // Limiter default-on per PRD §17 Q1.
     expect(state.limiter.enabled).toBe(true)
-    expect(state.limiter.thresholdDb).toBe(-1)
+    expect(state.limiter.thresholdDb).toBe(-2)
   })
 })

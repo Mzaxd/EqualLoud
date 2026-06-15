@@ -41,8 +41,13 @@ export {
 /**
  * Time constant (seconds) used by GainNode.setTargetAtTime when applying a new
  * gain decision. 50 ms glides between the ~10 Hz balance updates without
- * zipper clicks. Used for gain *increases* (boosting quiet content toward the
- * target); gain decreases use the faster {@link GAIN_ATTACK_TC}.
+ * zipper clicks. Used for gain *increases* (boosting quiet content toward
+ * the target); gain decreases use the faster {@link GAIN_ATTACK_TC}.
+ *
+ * Note: the offline tuner (eval/tune.ts) explored reducing this to 0.02 but
+ * the improvement was marginal (~2%) and it would eliminate the deliberate
+ * attack/release asymmetry (fast decrease / slow increase) that protects
+ * against zipper noise on boosts. Kept at 0.05 pending real-audio validation.
  */
 export const GAIN_SMOOTH_TC = 0.05
 
@@ -77,14 +82,19 @@ export const BOOST_REPORT_MS = 1000
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_LIMITER_SETTINGS = {
-  // PRD §17 Q1 recommends default-on limiter at -1 dB to prevent clipping
-  // when gain > 1 boosts content above 0 dBFS.
+  // Tuned by the offline tuner (eval/tune.ts). The Stage-2 sweep showed a
+  // strong directional preference toward more aggressive limiting (lower
+  // threshold, higher ratio, faster attack, slower release) — the optimizer
+  // hit the grid boundary on every axis. We adopt the midpoint between the
+  // old defaults and the optimizer's edge recommendation as a conservative
+  // step: more responsive on transients than before, but not at the extreme.
+  // Subject to A/B listening validation; revert if it sounds "pumped/squashed".
   enabled: true,
-  thresholdDb: -1,
+  thresholdDb: -2,
   kneeDb: 0,
-  ratio: 20,
-  attackMs: 1,
-  releaseMs: 100,
+  ratio: 30,
+  attackMs: 0.7,
+  releaseMs: 150,
 } as const
 
 // ---------------------------------------------------------------------------

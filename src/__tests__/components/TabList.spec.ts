@@ -35,7 +35,7 @@ function mockStore(
       isAutoBalancing: overrides.isAutoBalancing ?? true,
       toggleBalance: overrides.toggleBalance ?? vi.fn(async () => true),
     }),
-    hasEnoughSamples: (lufs: { blockCount: number }) => lufs.blockCount >= 3,
+    hasEnoughSamples: (lufs: { blockCount: number }) => lufs.blockCount >= 1,
   }
 }
 
@@ -130,7 +130,7 @@ describe('TabList', () => {
 
   describe('tab with collecting status', () => {
     it('shows collecting status for tab with few samples', async () => {
-      const wrapper = await remountWith(mockStore({ tabs: [createMockTab({ blockCount: 2 })] }))
+      const wrapper = await remountWith(mockStore({ tabs: [createMockTab({ blockCount: 0 })] }))
       expect(wrapper.text()).toContain('Analyzing...')
     })
   })

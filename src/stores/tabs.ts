@@ -35,11 +35,11 @@ export const useTabsStore = defineStore('tabs', () => {
   })
   const limiter = ref<LimiterSettings>({
     enabled: true,
-    thresholdDb: -1,
+    thresholdDb: -2,
     kneeDb: 0,
-    ratio: 20,
-    attackMs: 1,
-    releaseMs: 100,
+    ratio: 30,
+    attackMs: 0.7,
+    releaseMs: 150,
   })
   const error = ref<string | null>(null)
 

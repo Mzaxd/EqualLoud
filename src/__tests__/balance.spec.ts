@@ -34,12 +34,12 @@ describe('computeBalanceGains', () => {
     // the GainNode last held frozen in place — on jittery feed sites a tab
     // never reached MIN_BLOCKS and got stuck at its last (possibly loud) gain.
     // Now we drive it to 0 dB every pass so it self-corrects.
-    const tabs = [makeTab({ tabId: 1, shortTerm: -20, blockCount: 2 })]
+    const tabs = [makeTab({ tabId: 1, shortTerm: -20, blockCount: 0 })]
     expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: 0 }])
   })
 
-  it('balances tabs once they reach the minimum sample count', () => {
-    const tabs = [makeTab({ tabId: 1, shortTerm: -20, maxGainDb: 24, blockCount: 3 })]
+  it('balances tabs once they reach the minimum sample count (≥1 block)', () => {
+    const tabs = [makeTab({ tabId: 1, shortTerm: -20, maxGainDb: 24, blockCount: 1 })]
     expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: 6 }])
   })
 

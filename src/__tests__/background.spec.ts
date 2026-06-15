@@ -93,7 +93,7 @@ describe('background service worker (EqualLoud coordinator)', () => {
     ;(chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockClear()
 
     await background.handleMessage(
-      { type: 'LUFS_REPORT', tabId: 2, shortTerm: -20, blockCount: 1 },
+      { type: 'LUFS_REPORT', tabId: 2, shortTerm: -20, blockCount: 0 },
       { tab: { id: 2 } } as chrome.runtime.MessageSender,
     )
 

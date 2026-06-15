@@ -275,7 +275,7 @@ export interface TuneCandidate {
 
 /** The production defaults, evaluated as a baseline candidate for comparison. */
 export const PRODUCTION_DEFAULTS: BalanceSimParams = {
-  minBlocks: 3,
+  minBlocks: 1,
   minGainDb: -60,
   attackTc: 0.02,
   releaseTc: 0.05,

@@ -50,7 +50,7 @@ describe('tuner — correctness', () => {
       LIMITER_GRID.attackMs.length *
       LIMITER_GRID.releaseMs.length
     expect(expandLimiterGrid(LIMITER_GRID, {
-      minBlocks: 3, minGainDb: -60, attackTc: 0.02, releaseTc: 0.05,
+      minBlocks: 1, minGainDb: -60, attackTc: 0.02, releaseTc: 0.05,
     })).toHaveLength(n)
   })
 
