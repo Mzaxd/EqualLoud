@@ -9,7 +9,7 @@
   },
   "footer": {
     "brand": "EqualLoud",
-    "author": "github.com/dsh0416/EqualLoud"
+    "author": "github.com/mzaxd/EqualLoud"
   },
   "autobalance": {
     "title": "目标音量",
@@ -19,6 +19,10 @@
       "streaming": "流媒体",
       "podcast": "播客",
       "loud": "响亮"
+    },
+    "tooltips": {
+      "targetVolume": "所有标签页收敛到的目标响度。数值越高整体越响。-14 LUFS 与大多数流媒体平台一致。",
+      "lufs": "LUFS（满量程响度单位）是基于人耳感知的响度标准（EBU R128），比原始 dB 峰值更贴近实际听感。"
     }
   },
   "limiter": {
@@ -29,14 +33,30 @@
     },
     "on": "开",
     "off": "关",
-    "description": "防止多个标签页增益后出现削波。",
     "ceiling": "阈值",
-    "advanced": "高级设置",
     "ratio": "比率",
     "attack": "起动",
     "release": "释放",
     "knee": "拐点",
+    "tooltips": {
+      "title": "每个标签页音频链末端的安全阀。当提升后的音频超过 0 dBFS 时，防止刺耳的削波失真。",
+      "threshold": "压限器开始起作用的电平。低于此值的信号原样通过。",
+      "ratio": "超过阈值后压限器压制的力度。20:1 表示超出 20 dB 只放出 1 dB。∞:1 即砖墙限制。",
+      "attack": "压限器对尖峰的反应速度。快 = 捕捉瞬态（鼓点、爆破音）；慢 = 更自然但可能放过部分尖峰。",
+      "release": "尖峰过去后压限器松开的恢复速度。快 = 有力度但可能喘息；慢 = 更顺滑但恢复较慢。",
+      "knee": "阈值附近的过渡锐度。硬 = 突然压缩（精确）；软 = 渐进压缩（听感更柔和）。"
+    },
     "hints": {
+      "threshold": {
+        "conservative": "保守 - 留足余量",
+        "balanced": "平衡",
+        "aggressive": "激进 - 最大响度"
+      },
+      "ratio": {
+        "gentle": "轻度压缩",
+        "standard": "标准限制",
+        "brickwall": "砖墙 - 硬限制"
+      },
       "attack": {
         "fast": "快速 - 捕捉瞬态",
         "balanced": "平衡",
@@ -52,8 +72,7 @@
         "soft": "软拐点 - 更平滑",
         "verySoft": "非常软 - 轻柔压缩"
       }
-    },
-    "active": "压限已启用"
+    }
   },
   "tabs": {
     "empty": {
@@ -77,5 +96,9 @@
   },
   "lufs": {
     "collecting": "分析中..."
+  },
+  "updateNotice": {
+    "text": "EqualLoud 已更新，刷新正在播放的标签页即可恢复平衡。",
+    "dismiss": "关闭"
   }
 }

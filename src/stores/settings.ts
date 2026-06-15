@@ -14,12 +14,20 @@ export const useSettingsStore = defineStore(
       normalizeLocaleCode(typeof navigator !== 'undefined' ? navigator.language : 'en'),
     )
 
+    /**
+     * The app version for which the "please refresh your tabs" update notice
+     * was last dismissed. `null` = never shown (fresh install — we don't bug
+     * first-time users). When `__APP_VERSION__` differs, the banner shows again.
+     */
+    const lastNoticeVersion = ref<string | null>(null)
+
     function setLocale(newLocale: string): void {
       locale.value = normalizeLocaleCode(newLocale)
     }
 
     return {
       locale,
+      lastNoticeVersion,
       setLocale,
     }
   },
@@ -29,7 +37,7 @@ export const useSettingsStore = defineStore(
       // Sharing that key made popup locale writes overwrite the SW's
       // {enabled,targetLufs} and vice versa.
       key: 'popupSettings',
-      pick: ['locale'],
+      pick: ['locale', 'lastNoticeVersion'],
     },
   },
 )

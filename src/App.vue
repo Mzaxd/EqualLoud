@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import AutoBalance from '@/components/AutoBalance.vue'
 import Limiter from '@/components/Limiter.vue'
 import TabList from '@/components/TabList.vue'
+import UpdateNotice from '@/components/UpdateNotice.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useTabsStore } from '@/stores/tabs'
 
@@ -70,6 +71,9 @@ onUnmounted(() => {
 
     <!-- Main Content -->
     <main class="app-content">
+      <!-- Update recovery notice (auto-hides once dismissed for this version) -->
+      <UpdateNotice />
+
       <!-- Auto Balance Toggle + Status -->
       <AutoBalance />
 
@@ -96,7 +100,7 @@ onUnmounted(() => {
     <footer class="app-footer">
       <span>{{ t('footer.brand') }}</span>
       <span class="separator">•</span>
-      <a href="https://github.com/dsh0416/EqualLoud" target="_blank" rel="noopener noreferrer">{{
+      <a href="https://github.com/mzaxd/EqualLoud" target="_blank" rel="noopener noreferrer">{{
         t('footer.author')
       }}</a>
     </footer>

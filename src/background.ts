@@ -9,9 +9,9 @@
  *    `chrome.storage.local` so they survive SW restarts.
  *  - Answer popup requests.
  *
- * Unlike the old loudness_dd design, there is no offscreen document and no
- * tabCapture: the content scripts own the audio graphs. The SW only sees
- * numbers and sends numbers.
+ * The SW never touches audio: content scripts own the per-element audio graphs
+ * and the SW only sees LUFS numbers in and sends gain numbers out. No offscreen
+ * document, no tabCapture.
  */
 
 import { computeBalanceGains, shouldThrottleBalance, type BalanceableTab } from '@/audio/balance'
@@ -212,15 +212,14 @@ async function pushConfigToTab(tabId: number): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function updateBadge(): Promise<void> {
-  const count = tabs.size
+  // Default (enabled) state shows no badge at all — keeps the toolbar icon clean.
+  // Only when the user has explicitly turned balancing OFF do we mark the icon,
+  // so it's obvious at a glance that nothing is being balanced.
   if (!settings.enabled) {
-    await chrome.action.setBadgeText({ text: '' })
-  } else if (count === 0) {
-    await chrome.action.setBadgeText({ text: '●' })
-    await chrome.action.setBadgeBackgroundColor({ color: '#48bb78' })
+    await chrome.action.setBadgeText({ text: 'OFF' })
+    await chrome.action.setBadgeBackgroundColor({ color: '#718096' })
   } else {
-    await chrome.action.setBadgeText({ text: String(count) })
-    await chrome.action.setBadgeBackgroundColor({ color: '#48bb78' })
+    await chrome.action.setBadgeText({ text: '' })
   }
 }
 

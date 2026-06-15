@@ -1,8 +1,8 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { nextTick } from 'vue'
 
+import InfoTip from '@/components/InfoTip.vue'
 import Limiter from '@/components/Limiter.vue'
 import { i18n } from '@/i18n'
 
@@ -42,11 +42,6 @@ describe('Limiter', () => {
     expect(wrapper.text()).toContain('Output Limiter')
   })
 
-  it('renders the description', () => {
-    const wrapper = mountComponent()
-    expect(wrapper.text()).toContain('Prevents clipping')
-  })
-
   it('shows OFF when disabled', () => {
     const wrapper = mountComponent()
     expect(wrapper.text()).toContain('OFF')
@@ -58,20 +53,64 @@ describe('Limiter', () => {
     expect(toggle.classes()).not.toContain('active')
   })
 
-  it('renders threshold slider', () => {
-    const wrapper = mountComponent()
-    const slider = wrapper.find('.threshold-slider')
-    expect(slider.exists()).toBe(true)
-  })
+  describe('all five parameters are always visible (no fold)', () => {
+    // The defining property of the flattened design: every limiter knob is
+    // rendered at one level, regardless of enable state. No "Advanced" fold.
+    it('renders threshold, ratio, attack, release, knee sliders', () => {
+      const wrapper = mountComponent()
+      expect(wrapper.find('.threshold-slider').exists()).toBe(true)
+      expect(wrapper.find('.ratio-slider').exists()).toBe(true)
+      expect(wrapper.find('.attack-slider').exists()).toBe(true)
+      expect(wrapper.find('.release-slider').exists()).toBe(true)
+      expect(wrapper.find('.knee-slider').exists()).toBe(true)
+    })
 
-  it('renders threshold value', () => {
-    const wrapper = mountComponent()
-    expect(wrapper.text()).toContain('-1.0 dB')
-  })
+    it('renders default formatted values', () => {
+      const wrapper = mountComponent()
+      expect(wrapper.text()).toContain('-1.0 dB')
+      expect(wrapper.text()).toContain('20:1')
+      expect(wrapper.text()).toContain('1.0 ms')
+      expect(wrapper.text()).toContain('100 ms')
+      expect(wrapper.text()).toContain('0 dB')
+    })
 
-  it('does not show limiter active status when disabled', () => {
-    const wrapper = mountComponent()
-    expect(wrapper.find('.limiter-status').exists()).toBe(false)
+    it('renders no "Advanced Settings" toggle', () => {
+      const wrapper = mountComponent()
+      expect(wrapper.find('.advanced-toggle').exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('Advanced Settings')
+    })
+
+    it('renders no advanced-controls container', () => {
+      const wrapper = mountComponent()
+      expect(wrapper.find('.advanced-controls').exists()).toBe(false)
+    })
+
+    it('renders contextual hints for all five parameters', () => {
+      const wrapper = mountComponent()
+      // Defaults: threshold=-1 (aggressive), ratio=20 (standard boundary→brickwall at >20),
+      // attack=1 (fast), release=100 (balanced), knee=0 (hard)
+      expect(wrapper.text()).toContain('Aggressive')
+      expect(wrapper.text()).toContain('Standard')
+      expect(wrapper.text()).toContain('Fast - catches transients')
+      expect(wrapper.text()).toContain('Balanced')
+      expect(wrapper.text()).toContain('Hard knee')
+    })
+
+    it('renders an InfoTip next to each label and the title', () => {
+      const wrapper = mountComponent()
+      // 5 parameter labels + 1 title = 6 tooltips
+      const tips = wrapper.findAllComponents(InfoTip)
+      expect(tips.length).toBe(6)
+    })
+
+    it('disables all sliders when limiter is off', () => {
+      const wrapper = mountComponent()
+      const sliders = wrapper.findAll('.param-slider')
+      expect(sliders.length).toBe(5)
+      for (const s of sliders) {
+        expect(s.attributes('disabled')).toBeDefined()
+      }
+    })
   })
 
   describe('when enabled', () => {
@@ -89,91 +128,56 @@ describe('Limiter', () => {
       }))
     })
 
-    it('shows ON when enabled', async () => {
+    async function mountEnabled() {
       vi.resetModules()
       setActivePinia(createPinia())
       const { default: LimiterOn } = await import('@/components/Limiter.vue')
-      const wrapper = mount(LimiterOn, {
-        global: { plugins: [i18n] },
-      })
+      return mount(LimiterOn, { global: { plugins: [i18n] } })
+    }
+
+    it('shows ON when enabled', async () => {
+      const wrapper = await mountEnabled()
       expect(wrapper.text()).toContain('ON')
     })
 
     it('toggle has active class when enabled', async () => {
-      vi.resetModules()
-      setActivePinia(createPinia())
-      const { default: LimiterOn } = await import('@/components/Limiter.vue')
-      const wrapper = mount(LimiterOn, {
-        global: { plugins: [i18n] },
-      })
+      const wrapper = await mountEnabled()
       const toggle = wrapper.find('.limiter-toggle')
       expect(toggle.classes()).toContain('active')
     })
 
-    it('shows active status indicator when enabled', async () => {
-      vi.resetModules()
-      setActivePinia(createPinia())
-      const { default: LimiterOn } = await import('@/components/Limiter.vue')
-      const wrapper = mount(LimiterOn, {
-        global: { plugins: [i18n] },
-      })
-      const status = wrapper.find('.limiter-status')
-      expect(status.exists()).toBe(true)
-      expect(status.text()).toContain('Limiter active')
-    })
-
-    it('shows correct threshold value', async () => {
-      vi.resetModules()
-      setActivePinia(createPinia())
-      const { default: LimiterOn } = await import('@/components/Limiter.vue')
-      const wrapper = mount(LimiterOn, {
-        global: { plugins: [i18n] },
-      })
+    it('shows the configured parameter values', async () => {
+      const wrapper = await mountEnabled()
       expect(wrapper.text()).toContain('-2.0 dB')
+      expect(wrapper.text()).toContain('10:1')
+      expect(wrapper.text()).toContain('5.0 ms')
+      expect(wrapper.text()).toContain('150 ms')
+      expect(wrapper.text()).toContain('3 dB')
+    })
+
+    it('does not disable sliders when enabled', async () => {
+      const wrapper = await mountEnabled()
+      const sliders = wrapper.findAll('.param-slider')
+      for (const s of sliders) {
+        expect(s.attributes('disabled')).toBeUndefined()
+      }
+    })
+
+    it('updates hint text to match new parameter values', async () => {
+      // threshold=-2 (balanced), ratio=10 (standard), attack=5 (balanced),
+      // release=150 (balanced boundary→slow at >150), knee=3 (soft)
+      const wrapper = await mountEnabled()
+      expect(wrapper.text()).toContain('Balanced')
+      expect(wrapper.text()).toContain('Standard')
+      expect(wrapper.text()).toContain('Soft knee - smoother')
     })
   })
 
-  describe('advanced settings', () => {
-    it('hides advanced controls by default', () => {
+  describe('toggle interaction', () => {
+    it('calls setLimiterEnabled with inverted value on click', async () => {
       const wrapper = mountComponent()
-      expect(wrapper.find('.advanced-controls').exists()).toBe(false)
-    })
-
-    it('shows advanced toggle button', () => {
-      const wrapper = mountComponent()
-      expect(wrapper.text()).toContain('Advanced Settings')
-    })
-
-    it('advanced toggle is disabled when limiter is off', () => {
-      const wrapper = mountComponent()
-      const advancedToggle = wrapper.find('.advanced-toggle')
-      expect(advancedToggle.attributes('disabled')).toBeDefined()
-    })
-  })
-
-  describe('advanced settings when enabled', () => {
-    beforeEach(() => {
-      vi.doMock('@/stores/tabs', () => ({
-        useTabsStore: () => ({
-          ...defaultStore,
-          isLimiterEnabled: true,
-        }),
-      }))
-    })
-
-    it('toggles advanced controls on click', async () => {
-      vi.resetModules()
-      setActivePinia(createPinia())
-      const { default: LimiterEnabled } = await import('@/components/Limiter.vue')
-      const wrapper = mount(LimiterEnabled, {
-        global: { plugins: [i18n] },
-      })
-      const advancedToggle = wrapper.find('.advanced-toggle')
-      await advancedToggle.trigger('click')
-      await nextTick()
-      // After click, should show expanded icon
-      expect(wrapper.text()).toContain('▼')
-      expect(wrapper.find('.advanced-controls').exists()).toBe(true)
+      await wrapper.find('.limiter-toggle').trigger('click')
+      expect(defaultStore.setLimiterEnabled).toHaveBeenCalledWith(true)
     })
   })
 })

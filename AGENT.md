@@ -18,9 +18,9 @@ Node engines: `^20.19.0 || >=22.12.0`.
 
 EqualLoud is a Chrome MV3 extension that **automatically balances the loudness
 of every video/audio tab toward one target LUFS (default −14)**, with no user
-interaction. Unlike its predecessor `loudness_dd` (tabCapture + offscreen, which
-MV3 made unworkable), EqualLoud injects content scripts that take over each
-page's `<video>`/`<audio>` via `createMediaElementSource` + `GainNode`.
+interaction. It injects content scripts that take over each page's
+`<video>`/`<audio>` via `createMediaElementSource` + `GainNode` — no
+`tabCapture`, no `activeTab`, no offscreen document.
 
 ## Key architecture
 
@@ -61,7 +61,8 @@ Key files:
 - [src/audio/config.ts](src/audio/config.ts) — every tunable knob
   (defaults, limits, smoothing, report rate). PRD §9.
 - [src/audio/lufs.ts](src/audio/lufs.ts), [src/worklets/lufs-processor.ts](src/worklets/lufs-processor.ts),
-  [src/audio/balance.ts](src/audio/balance.ts) — verbatim from loudness_dd.
+  [src/audio/balance.ts](src/audio/balance.ts) — the ITU-R BS.1770-4 loudness
+  measurement + balance-decision core (pure functions, no DOM/Chrome deps).
 - [src/stores/tabs.ts](src/stores/tabs.ts), [src/stores/settings.ts](src/stores/settings.ts) —
   popup Pinia stores. `tabs` polls the SW via `GET_STATE`.
 - [src/components/](src/components/) — `AutoBalance.vue`, `TabList.vue`
@@ -129,7 +130,8 @@ Popup → SW (request/response):
 4. **Audio:** keep limiter defaults conservative; clamp user ranges; benchmark
    CPU if you add per-element nodes.
 5. **Lifecycle:** preserve `TAB_UNLOAD`, `onRemoved`, and the alarm scan so
-   stale tabs are pruned; keep the badge coherent with tab count.
+   stale tabs are pruned; keep `updateBadge()` in sync — it shows `OFF` only
+   when balancing is disabled (clean icon otherwise).
 6. **Storage:** persist only `settings` + `limiter`. Never persist per-tab
    runtime state — it's rebuilt from content-script heartbeats.
 7. **SW wake-up:** every handler awaits `settingsLoaded` so a freshly-woken SW
@@ -140,7 +142,7 @@ Popup → SW (request/response):
 - Unit (`vitest` + `@vue/test-utils`, jsdom): `pnpm test:unit`, in
   [src/__tests__/](src/__tests__).
   - `balance.spec.ts`, `lufs-calculator.spec.ts`, `lufs-processor.spec.ts` —
-    verbatim from loudness_dd (pure algorithm parity).
+    cover the pure algorithm core (K-weighting, gating, clamp/skip/solo).
   - `media-manager.spec.ts` — `pickPrimaryMedia` / `shouldAttach`.
   - `background.spec.ts` — the SW router end-to-end (LUFS_REPORT → SET_GAIN,
     persistence, per-tab balance bypass, disable, unload).

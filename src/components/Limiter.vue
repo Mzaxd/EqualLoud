@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import InfoTip from '@/components/InfoTip.vue'
 import { useDebouncedCallback } from '@/composables/useDebouncedRef'
 import { useTabsStore } from '@/stores/tabs'
 
@@ -16,7 +17,20 @@ const release = computed(() => tabsStore.limiterRelease)
 const knee = computed(() => tabsStore.limiterKnee)
 const ratio = computed(() => tabsStore.limiterRatio)
 
-const showAdvanced = ref(false)
+// Dynamic hint text for threshold & ratio — mirrors the attack/release/knee
+// pattern so every control-row has the same vertical footprint.
+const thresholdHint = computed(() => {
+  const v = threshold.value
+  if (v <= -3) return t('limiter.hints.threshold.conservative')
+  if (v <= -1.5) return t('limiter.hints.threshold.balanced')
+  return t('limiter.hints.threshold.aggressive')
+})
+const ratioHint = computed(() => {
+  const v = ratio.value
+  if (v <= 4) return t('limiter.hints.ratio.gentle')
+  if (v <= 20) return t('limiter.hints.ratio.standard')
+  return t('limiter.hints.ratio.brickwall')
+})
 
 async function toggleLimiter(): Promise<void> {
   await tabsStore.setLimiterEnabled(!isEnabled.value)
@@ -89,6 +103,7 @@ function formatRatio(x: number): string {
       <div class="limiter-title">
         <span class="limiter-icon">🛡️</span>
         <span>{{ t('limiter.title') }}</span>
+        <InfoTip :tip="t('limiter.tooltips.title')" />
       </div>
       <button
         class="limiter-toggle"
@@ -103,15 +118,17 @@ function formatRatio(x: number): string {
       </button>
     </div>
 
-    <div class="limiter-description">
-      {{ t('limiter.description') }}
-    </div>
-
+    <!-- All five parameters are flattened to one level: no nested fold keeps
+         the surface honest — every knob the limiter exposes is visible at once.
+         Sensible defaults mean casual users never need to touch them. -->
     <div class="limiter-controls" :class="{ disabled: !isEnabled }">
-      <!-- Ceiling (Threshold) -->
+      <!-- Threshold (Ceiling) -->
       <div class="control-row">
         <label class="control-label">
-          <span>{{ t('limiter.ceiling') }}</span>
+          <span class="label-text">
+            {{ t('limiter.ceiling') }}
+            <InfoTip :tip="t('limiter.tooltips.threshold')" />
+          </span>
           <span class="control-value">{{ formatThreshold(threshold) }}</span>
         </label>
         <div class="slider-container">
@@ -128,130 +145,124 @@ function formatRatio(x: number): string {
           />
           <span class="slider-label">-0.1</span>
         </div>
+        <div class="param-hint">{{ thresholdHint }}</div>
       </div>
 
-      <!-- Advanced Settings Toggle -->
-      <button
-        class="advanced-toggle"
-        :class="{ expanded: showAdvanced }"
-        :disabled="!isEnabled"
-        @click="showAdvanced = !showAdvanced"
-      >
-        <span class="advanced-icon">{{ showAdvanced ? '▼' : '▶' }}</span>
-        <span>{{ t('limiter.advanced') }}</span>
-      </button>
-
-      <!-- Advanced Controls -->
-      <Transition name="slide">
-        <div v-if="showAdvanced" class="advanced-controls">
-          <!-- Ratio -->
-          <div class="control-row">
-            <label class="control-label">
-              <span>{{ t('limiter.ratio') }}</span>
-              <span class="control-value ratio-value">{{ formatRatio(ratio) }}</span>
-            </label>
-            <div class="slider-container">
-              <span class="slider-label">1</span>
-              <input
-                type="range"
-                class="param-slider ratio-slider"
-                min="1"
-                max="60"
-                step="1"
-                :value="ratio"
-                :disabled="!isEnabled"
-                @input="handleRatioChange"
-              />
-              <span class="slider-label">60</span>
-            </div>
-          </div>
-          <!-- Attack -->
-          <div class="control-row">
-            <label class="control-label">
-              <span>{{ t('limiter.attack') }}</span>
-              <span class="control-value attack-value">{{ formatAttack(attack) }}</span>
-            </label>
-            <div class="slider-container">
-              <span class="slider-label">0.1</span>
-              <input
-                type="range"
-                class="param-slider attack-slider"
-                min="0.1"
-                max="50"
-                step="0.1"
-                :value="attack"
-                :disabled="!isEnabled"
-                @input="handleAttackChange"
-              />
-              <span class="slider-label">50</span>
-            </div>
-            <div class="param-hint">
-              <span v-if="attack <= 1">{{ t('limiter.hints.attack.fast') }}</span>
-              <span v-else-if="attack <= 10">{{ t('limiter.hints.attack.balanced') }}</span>
-              <span v-else>{{ t('limiter.hints.attack.slow') }}</span>
-            </div>
-          </div>
-
-          <!-- Release -->
-          <div class="control-row">
-            <label class="control-label">
-              <span>{{ t('limiter.release') }}</span>
-              <span class="control-value release-value">{{ formatRelease(release) }}</span>
-            </label>
-            <div class="slider-container">
-              <span class="slider-label">10</span>
-              <input
-                type="range"
-                class="param-slider release-slider"
-                min="10"
-                max="500"
-                step="5"
-                :value="release"
-                :disabled="!isEnabled"
-                @input="handleReleaseChange"
-              />
-              <span class="slider-label">500</span>
-            </div>
-            <div class="param-hint">
-              <span v-if="release <= 50">{{ t('limiter.hints.release.fast') }}</span>
-              <span v-else-if="release <= 150">{{ t('limiter.hints.release.balanced') }}</span>
-              <span v-else>{{ t('limiter.hints.release.slow') }}</span>
-            </div>
-          </div>
-
-          <!-- Knee -->
-          <div class="control-row">
-            <label class="control-label">
-              <span>{{ t('limiter.knee') }}</span>
-              <span class="control-value knee-value">{{ formatKnee(knee) }}</span>
-            </label>
-            <div class="slider-container">
-              <span class="slider-label">0</span>
-              <input
-                type="range"
-                class="param-slider knee-slider"
-                min="0"
-                max="40"
-                step="1"
-                :value="knee"
-                :disabled="!isEnabled"
-                @input="handleKneeChange"
-              />
-              <span class="slider-label">40</span>
-            </div>
-            <div class="param-hint">
-              <span v-if="knee <= 1">{{ t('limiter.hints.knee.hard') }}</span>
-              <span v-else-if="knee <= 10">{{ t('limiter.hints.knee.soft') }}</span>
-              <span v-else>{{ t('limiter.hints.knee.verySoft') }}</span>
-            </div>
-          </div>
+      <!-- Ratio -->
+      <div class="control-row">
+        <label class="control-label">
+          <span class="label-text">
+            {{ t('limiter.ratio') }}
+            <InfoTip :tip="t('limiter.tooltips.ratio')" />
+          </span>
+          <span class="control-value ratio-value">{{ formatRatio(ratio) }}</span>
+        </label>
+        <div class="slider-container">
+          <span class="slider-label">1</span>
+          <input
+            type="range"
+            class="param-slider ratio-slider"
+            min="1"
+            max="60"
+            step="1"
+            :value="ratio"
+            :disabled="!isEnabled"
+            @input="handleRatioChange"
+          />
+          <span class="slider-label">60</span>
         </div>
-      </Transition>
-    </div>
+        <div class="param-hint">{{ ratioHint }}</div>
+      </div>
 
-    <div v-if="isEnabled" class="limiter-status">
-      <span class="status-indicator active"></span>
-      <span>{{ t('limiter.active') }}</span>
+      <!-- Attack -->
+      <div class="control-row">
+        <label class="control-label">
+          <span class="label-text">
+            {{ t('limiter.attack') }}
+            <InfoTip :tip="t('limiter.tooltips.attack')" />
+          </span>
+          <span class="control-value attack-value">{{ formatAttack(attack) }}</span>
+        </label>
+        <div class="slider-container">
+          <span class="slider-label">0.1</span>
+          <input
+            type="range"
+            class="param-slider attack-slider"
+            min="0.1"
+            max="50"
+            step="0.1"
+            :value="attack"
+            :disabled="!isEnabled"
+            @input="handleAttackChange"
+          />
+          <span class="slider-label">50</span>
+        </div>
+        <div class="param-hint">
+          <span v-if="attack <= 1">{{ t('limiter.hints.attack.fast') }}</span>
+          <span v-else-if="attack <= 10">{{ t('limiter.hints.attack.balanced') }}</span>
+          <span v-else>{{ t('limiter.hints.attack.slow') }}</span>
+        </div>
+      </div>
+
+      <!-- Release -->
+      <div class="control-row">
+        <label class="control-label">
+          <span class="label-text">
+            {{ t('limiter.release') }}
+            <InfoTip :tip="t('limiter.tooltips.release')" />
+          </span>
+          <span class="control-value release-value">{{ formatRelease(release) }}</span>
+        </label>
+        <div class="slider-container">
+          <span class="slider-label">10</span>
+          <input
+            type="range"
+            class="param-slider release-slider"
+            min="10"
+            max="500"
+            step="5"
+            :value="release"
+            :disabled="!isEnabled"
+            @input="handleReleaseChange"
+          />
+          <span class="slider-label">500</span>
+        </div>
+        <div class="param-hint">
+          <span v-if="release <= 50">{{ t('limiter.hints.release.fast') }}</span>
+          <span v-else-if="release <= 150">{{ t('limiter.hints.release.balanced') }}</span>
+          <span v-else>{{ t('limiter.hints.release.slow') }}</span>
+        </div>
+      </div>
+
+      <!-- Knee -->
+      <div class="control-row">
+        <label class="control-label">
+          <span class="label-text">
+            {{ t('limiter.knee') }}
+            <InfoTip :tip="t('limiter.tooltips.knee')" />
+          </span>
+          <span class="control-value knee-value">{{ formatKnee(knee) }}</span>
+        </label>
+        <div class="slider-container">
+          <span class="slider-label">0</span>
+          <input
+            type="range"
+            class="param-slider knee-slider"
+            min="0"
+            max="40"
+            step="1"
+            :value="knee"
+            :disabled="!isEnabled"
+            @input="handleKneeChange"
+          />
+          <span class="slider-label">40</span>
+        </div>
+        <div class="param-hint">
+          <span v-if="knee <= 1">{{ t('limiter.hints.knee.hard') }}</span>
+          <span v-else-if="knee <= 10">{{ t('limiter.hints.knee.soft') }}</span>
+          <span v-else>{{ t('limiter.hints.knee.verySoft') }}</span>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -269,13 +280,13 @@ function formatRatio(x: number): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 14px;
 }
 
 .limiter-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 14px;
   font-weight: 600;
   color: #333;
@@ -283,6 +294,12 @@ function formatRatio(x: number): string {
 
 .limiter-icon {
   font-size: 16px;
+}
+
+.label-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .limiter-toggle {
@@ -338,14 +355,10 @@ function formatRatio(x: number): string {
   color: #48bb78;
 }
 
-.limiter-description {
-  font-size: 11px;
-  color: #888;
-  margin-bottom: 14px;
-  line-height: 1.4;
-}
-
 .limiter-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   transition: opacity 0.2s ease;
 }
 
@@ -358,11 +371,6 @@ function formatRatio(x: number): string {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 12px;
-}
-
-.control-row:last-child {
-  margin-bottom: 0;
 }
 
 .control-label {
@@ -451,102 +459,5 @@ function formatRatio(x: number): string {
   color: #bbb;
   text-align: center;
   font-style: italic;
-}
-
-/* Advanced Toggle */
-.advanced-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px 0;
-  margin: 8px 0;
-  background: none;
-  border: none;
-  border-top: 1px solid #f0f0f0;
-  border-bottom: 1px solid #f0f0f0;
-  color: #888;
-  font-size: 11px;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.advanced-toggle:hover:not(:disabled) {
-  color: #555;
-}
-
-.advanced-toggle:disabled {
-  cursor: not-allowed;
-}
-
-.advanced-icon {
-  font-size: 8px;
-  transition: transform 0.2s ease;
-}
-
-.advanced-controls {
-  padding-top: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.advanced-controls .control-row {
-  margin-bottom: 0;
-}
-
-/* Slide transition */
-.slide-enter-active,
-.slide-leave-active {
-  transition: all 0.25s ease;
-  overflow: hidden;
-}
-
-.slide-enter-from,
-.slide-leave-to {
-  opacity: 0;
-  max-height: 0;
-  padding-top: 0;
-}
-
-.slide-enter-to,
-.slide-leave-from {
-  opacity: 1;
-  max-height: 300px;
-  padding-top: 8px;
-}
-
-.limiter-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #f0f0f0;
-  font-size: 11px;
-  color: #888;
-}
-
-.status-indicator {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #ccc;
-}
-
-.status-indicator.active {
-  background: #48bb78;
-  box-shadow: 0 0 6px rgba(72, 187, 120, 0.5);
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
 }
 </style>

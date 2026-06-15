@@ -81,7 +81,7 @@ class AudioGraph {
 
 ## 2. 消息协议契约(messages/protocol.ts)
 
-loudness_dd 把消息类型散落在 `background.ts`/`offscreen.ts` 里。EqualLoud **集中到 `src/messages/protocol.ts`**,SW/content/popup 三方共享,TS strict 强类型。
+所有消息类型**集中到 `src/messages/protocol.ts`**,SW/content/popup 三方共享,TS strict 强类型,避免散落在各文件里。
 
 ```ts
 // ── 共享类型 ──
@@ -168,7 +168,7 @@ const STORAGE_KEYS = {
 }
 ```
 
-### 3.3 SW 生命周期(loudness_dd 踩坑固化)
+### 3.3 SW 生命周期
 
 - **启动即加载**:`loadSettings()` 返回 Promise,SW 顶层立即调用并缓存。
 - **入口守卫**:`handleMessage` 入口 `await initialSettingsLoaded`,保证任何应答前设置就绪。
@@ -266,29 +266,28 @@ primevideo.com, tv.apple.com, peacocktv.com, paramplus.com
 
 ---
 
-## 8. 从 loudness_dd 复用清单(精确)
+## 8. 模块清单
 
-### 原样复制(改 import 路径即可)
-- `src/audio/lufs.ts` → `src/audio/lufs.ts`
-- `src/audio/balance.ts` → `src/audio/balance.ts`
-- `src/worklets/lufs-processor.ts` → `src/worklets/lufs-processor.ts`
-- `src/stores/settings.ts` → `src/stores/settings.ts`(locale 持久化)
+### 纯算法核心(无 DOM/Chrome 依赖)
+- `src/audio/lufs.ts` — ITU-R BS.1770-4 K-weighting + gating + block loudness
+- `src/audio/balance.ts` — `computeBalanceGains` 纯函数
+- `src/worklets/lufs-processor.ts` — AudioWorklet 测量节点
+- `src/stores/settings.ts`(locale 持久化)
 - `src/i18n.ts` + `src/locales/{en,zh_CN}.json` + `plugins/i18n-locales.ts` + `public/_locales/`
 - `tools/loudness-test.html`
-- 配置模板:`vite.config.ts`(去 offscreen input)/ `vitest.config.ts` / `tsconfig*.json` / `eslint.config.ts` / `.prettierrc.json` / `env.d.ts`
+- 配置模板:`vite.config.ts` / `vitest.config.ts` / `tsconfig*.json` / `eslint.config.ts` / `.prettierrc.json` / `env.d.ts`
 
-### 改造复用
-- `src/stores/tabs.ts`:保留 Pinia store 结构与 popup↔SW 通信骨架,**改消息类型为新协议**(`GET_STATE`/`TOGGLE_MUTE`/`TOGGLE_SOLO`/`SET_LIMITER`),**加 appliedGainDb 实时显示**;去掉 `SET_GAIN_REQUEST`/`SET_AUTO_BALANCE_ENABLED` 等旧消息;去掉 tabCapture 相关(`isCapturing` 语义变更)。
-- `src/components/AutoBalance.vue`:原样,适配新 settings store。
-- `src/components/Limiter.vue`:原样,默认值改 enabled=true。
-- `src/components/TabList.vue`:加每行 appliedGainDb 显示(+5.2 dB / -3.0 dB);mute/solo 按钮接 TOGGLE_MUTE/TOGGLE_SOLO。
-- `src/__tests__/`:balance/lufs-calculator/lufs-processor spec 原样;components/stores spec 适配新协议;新增 `pickPrimaryMedia.spec.ts`、`protocol.spec.ts`。
+### Popup 与 store
+- `src/stores/tabs.ts`:Pinia store,popup↔SW 通信骨架走新协议(`GET_STATE`/`TOGGLE_MUTE`/`TOGGLE_SOLO`/`SET_LIMITER`),实时显示 appliedGainDb。
+- `src/components/AutoBalance.vue`:适配新 settings store。
+- `src/components/Limiter.vue`:默认值 enabled=true。
+- `src/components/TabList.vue`:每行 appliedGainDb 显示(+5.2 dB / -3.0 dB);mute/solo 按钮接 TOGGLE_MUTE/TOGGLE_SOLO。
+- `src/__tests__/`:balance/lufs-calculator/lufs-processor spec;components/stores spec 适配协议;`pickPrimaryMedia.spec.ts`、`protocol.spec.ts`。
 
-### 重写(不复制)
-- `src/background.ts`(新协调器,去 tabCapture/offscreen,§3/§6)
-- `src/offscreen.ts`(整个 offscreen 层废弃)
-- `manifest.config.ts`(新权限,§9)
-- 新增:`src/content/{index,media-manager,audio-graph,messenger}.ts`、`src/messages/protocol.ts`
+### 原生架构(content-script 方案独有)
+- `src/background.ts`(SW 协调器,§3/§6 —— 无 tabCapture、无 offscreen)
+- `manifest.config.ts`(权限,§9)
+- `src/content/{index,media-manager,audio-graph,messenger}.ts`、`src/messages/protocol.ts`(content-script 方案的核心)
 
 ---
 
@@ -339,7 +338,7 @@ export default defineManifest({
 ## 11. 测试策略
 
 ### 纯逻辑 TDD(Vitest + jsdom,先红后绿)
-- `computeBalanceGains` / `shouldThrottleBalance` / `hasEnoughSamples` —— 复用 loudness_dd `balance.spec.ts`(12 用例)
+- `computeBalanceGains` / `shouldThrottleBalance` / `hasEnoughSamples` —— `balance.spec.ts`(12 用例)
 - `LufsCalculator` —— 复用 `lufs-calculator.spec.ts`(24 用例)
 - `lufs-processor` —— 复用 `lufs-processor.spec.ts`(7 用例)
 - **新增** `pickPrimaryMedia` —— 多视频打分选择(可见/时长/尺寸/muted 组合)

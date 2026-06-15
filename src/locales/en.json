@@ -9,7 +9,7 @@
   },
   "footer": {
     "brand": "EqualLoud",
-    "author": "github.com/dsh0416/EqualLoud"
+    "author": "github.com/mzaxd/EqualLoud"
   },
   "autobalance": {
     "title": "Target Volume",
@@ -19,6 +19,10 @@
       "streaming": "Streaming",
       "podcast": "Podcast",
       "loud": "Loud"
+    },
+    "tooltips": {
+      "targetVolume": "The loudness every tab converges toward. Higher = louder overall. -14 LUFS matches most streaming platforms.",
+      "lufs": "LUFS = Loudness Units Full Scale. A perceptual loudness standard (EBU R128) that approximates how loud content sounds to human ears, unlike raw dB peaks."
     }
   },
   "limiter": {
@@ -29,14 +33,30 @@
     },
     "on": "ON",
     "off": "OFF",
-    "description": "Prevents clipping when multiple tabs are boosted.",
     "ceiling": "Threshold",
-    "advanced": "Advanced Settings",
     "ratio": "Ratio",
     "attack": "Attack",
     "release": "Release",
     "knee": "Knee",
+    "tooltips": {
+      "title": "A safety valve at the end of each tab's audio chain. Prevents harsh clipping distortion when boosted audio would exceed 0 dBFS.",
+      "threshold": "The level above which the limiter kicks in. Everything quieter passes through untouched.",
+      "ratio": "How hard the limiter pushes back once the threshold is crossed. 20:1 means 20 dB over becomes 1 dB out. ∞:1 is a brick wall.",
+      "attack": "How fast the limiter reacts to spikes. Fast = catches transients (drums, pops); slow = more natural but lets some peaks through.",
+      "release": "How fast the limiter lets go after the peak passes. Fast = punchy but may pump; slow = smoother but recovers later.",
+      "knee": "The transition sharpness around the threshold. Hard = sudden compression (precise); soft = gradual (less audible)."
+    },
     "hints": {
+      "threshold": {
+        "conservative": "Conservative - extra headroom",
+        "balanced": "Balanced",
+        "aggressive": "Aggressive - maximum loudness"
+      },
+      "ratio": {
+        "gentle": "Gentle compression",
+        "standard": "Standard limiting",
+        "brickwall": "Brick wall - hard limit"
+      },
       "attack": {
         "fast": "Fast - catches transients",
         "balanced": "Balanced",
@@ -52,8 +72,7 @@
         "soft": "Soft knee - smoother",
         "verySoft": "Very soft - gentle compression"
       }
-    },
-    "active": "Limiter active"
+    }
   },
   "tabs": {
     "empty": {
@@ -77,5 +96,9 @@
   },
   "lufs": {
     "collecting": "Analyzing..."
+  },
+  "updateNotice": {
+    "text": "EqualLoud was updated. Refresh your playing tabs to restore balance.",
+    "dismiss": "Dismiss"
   }
 }

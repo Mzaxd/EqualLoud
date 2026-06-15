@@ -70,7 +70,7 @@ describe('i18n configuration', () => {
 
   it('can translate footer in English', () => {
     expect(i18n.global.t('footer.brand')).toBe('EqualLoud')
-    expect(i18n.global.t('footer.author')).toBe('github.com/dsh0416/EqualLoud')
+    expect(i18n.global.t('footer.author')).toBe('github.com/mzaxd/EqualLoud')
   })
 
   it('translates all status messages in English', () => {

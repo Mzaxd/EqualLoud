@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import InfoTip from '@/components/InfoTip.vue'
 import { useDebouncedCallback } from '@/composables/useDebouncedRef'
 import { useTabsStore } from '@/stores/tabs'
 
@@ -44,7 +45,10 @@ async function handleToggleAutoBalance(): Promise<void> {
     <!-- Toggle Row -->
     <div class="toggle-row">
       <div class="toggle-info">
-        <span class="toggle-label">{{ t('autobalance.title') }}</span>
+        <span class="toggle-label">
+          {{ t('autobalance.title') }}
+          <InfoTip :tip="t('autobalance.tooltips.targetVolume')" />
+        </span>
         <span class="status-text">{{ statusText }}</span>
       </div>
       <button
@@ -74,7 +78,10 @@ async function handleToggleAutoBalance(): Promise<void> {
           />
           <span class="slider-label">0</span>
         </div>
-        <div class="target-value">{{ targetLufs }} LUFS</div>
+        <div class="target-value">
+          <span>{{ targetLufs }} LUFS</span>
+          <InfoTip :tip="t('autobalance.tooltips.lufs')" />
+        </div>
       </div>
     </Transition>
   </div>
@@ -102,6 +109,9 @@ async function handleToggleAutoBalance(): Promise<void> {
 }
 
 .toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 14px;
   font-weight: 600;
   color: #1a1a2e;
@@ -204,7 +214,10 @@ async function handleToggleAutoBalance(): Promise<void> {
 }
 
 .target-value {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   margin-top: 6px;
   font-size: 12px;
   font-weight: 600;

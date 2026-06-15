@@ -204,7 +204,7 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
 }
 
 // ---------------------------------------------------------------------------
-// Limiter helpers (migrated from loudness_dd offscreen.ts)
+// Limiter helpers — map user-facing limiter settings onto a DynamicsCompressor.
 // ---------------------------------------------------------------------------
 
 const DEFAULT_LIMITER_OFF: LimiterSettings = {
