@@ -15,6 +15,29 @@ export const MIN_BLOCKS_FOR_RELIABLE_LUFS = 3
 // Lower gain floor applied to every balanced tab (matches the slider floor).
 export const DEFAULT_MIN_GAIN = -60
 
+/**
+ * All knobs of the balance-decision control loop, gathered in one place so
+ * the offline tuner (`eval/tune.ts`) can sweep them. Production callers pass
+ * nothing and get these defaults; the simulator/tuner inject alternatives.
+ *
+ * Fields:
+ *   minBlocks — blockCount threshold below which shortTerm is untrusted (→ 0 dB).
+ *   minGainDb — hard floor on the decided gain (attenuation ceiling).
+ *
+ * The +12 dB positive-gain ceiling is *not* here: it is per-tab
+ * (`BalanceableTab.maxGainDb`) because it is a user setting, not a loop tune.
+ */
+export interface BalanceParams {
+  minBlocks: number
+  minGainDb: number
+}
+
+/** Production defaults — the values every caller used before tuning existed. */
+export const DEFAULT_BALANCE_PARAMS: BalanceParams = {
+  minBlocks: MIN_BLOCKS_FOR_RELIABLE_LUFS,
+  minGainDb: DEFAULT_MIN_GAIN,
+}
+
 // Minimum spacing between auto-balance runs driven by the LUFS_UPDATE heartbeat.
 export const BALANCE_THROTTLE_MS = 100
 
@@ -31,8 +54,8 @@ export interface GainDecision {
   gainDb: number
 }
 
-export function hasEnoughSamples(blockCount: number): boolean {
-  return blockCount >= MIN_BLOCKS_FOR_RELIABLE_LUFS
+export function hasEnoughSamples(blockCount: number, minBlocks = MIN_BLOCKS_FOR_RELIABLE_LUFS): boolean {
+  return blockCount >= minBlocks
 }
 
 /**
@@ -52,7 +75,11 @@ export function hasEnoughSamples(blockCount: number): boolean {
  * for bypassed tabs separately); this function only ever sees tabs that should
  * be balanced.
  */
-export function computeBalanceGains(tabs: BalanceableTab[], targetLufs: number): GainDecision[] {
+export function computeBalanceGains(
+  tabs: BalanceableTab[],
+  targetLufs: number,
+  params: BalanceParams = DEFAULT_BALANCE_PARAMS,
+): GainDecision[] {
   const decisions: GainDecision[] = []
 
   for (const tab of tabs) {
@@ -61,13 +88,13 @@ export function computeBalanceGains(tabs: BalanceableTab[], targetLufs: number):
     // Not enough samples yet, or no finite measurement: hold unity rather than
     // inherit a stale gain. Still emit a decision so the caller drives the
     // GainNode to 0 dB on every pass (self-correcting after primary jitter).
-    if (!hasEnoughSamples(tab.blockCount) || !Number.isFinite(tab.shortTerm)) {
+    if (!hasEnoughSamples(tab.blockCount, params.minBlocks) || !Number.isFinite(tab.shortTerm)) {
       decisions.push({ tabId: tab.tabId, gainDb: 0 })
       continue
     }
 
     const raw = targetLufs - tab.shortTerm
-    const clamped = Math.max(DEFAULT_MIN_GAIN, Math.min(tab.maxGainDb, raw))
+    const clamped = Math.max(params.minGainDb, Math.min(tab.maxGainDb, raw))
     decisions.push({ tabId: tab.tabId, gainDb: clamped })
   }
 

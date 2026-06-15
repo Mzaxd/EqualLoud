@@ -229,6 +229,19 @@ export function silence(sampleRate: number, durationSec: number): StereoSignal {
 }
 
 /**
+ * Pink-noise peak amplitude (dBFS) that yields a given measured LUFS.
+ *
+ * Pink noise's measured LUFS sits a fixed 11.85 dB below its peak dBFS
+ * amplitude (verified empirically — see references.ts for why pink noise has
+ * a stable LUFS regardless of seed). So to synthesise a tab that *measures*
+ * −24 LUFS we generate pink noise at ≈ −12.15 dBFS. Centralised here so the
+ * specs and the tuner share one source of truth instead of re-deriving it.
+ */
+export function pinkAmpDbFor(lufs: number): number {
+  return lufs + 11.85
+}
+
+/**
  * Append two stereo buffers end-to-end. Used to stitch e.g.
  * `podcast → silence → podcast`.
  */
@@ -240,4 +253,132 @@ export function concatStereo(a: StereoSignal, b: StereoSignal): StereoSignal {
   out.set(a.samples, 0)
   out.set(b.samples, a.samples.length)
   return { samples: out, sampleRate: a.sampleRate, channels: 2 }
+}
+
+// ---------------------------------------------------------------------------
+// Synthetic "difficult" signals — closer to real-world audio than flat pink
+// noise. These exist to stress the limiter and gain smoother in ways pink noise
+// cannot: sharp transients (drum hits, plosives) trigger zipper noise on fast
+// gain changes; band-limited spectra (voice) expose frequency-dependent limiter
+// behaviour. No real audio needed — the *statistical* properties are what matter.
+// ---------------------------------------------------------------------------
+
+/**
+ * Pink noise with periodic sharp transient bursts superimposed.
+ *
+ * Models drum hits / plosives / explosion SFX: a low-level noise bed (the
+ * "program material") punctuated every `intervalMs` by a short high-amplitude
+ * spike (the "transient"). The transient is a decaying pulse a few ms long —
+ * short enough to be gone before the balance loop reacts, but loud enough to
+ * make the limiter and gain smoother work.
+ *
+ * This is the signal that punishes overly-fast gain time constants: if the
+ * smoother reacts within the transient's duration it will modulate audible
+ * gain *during* the transient, producing a click or "breathing" artefact.
+ *
+ * @param intervalMs  Time between transients (e.g. 500 ms = 2 hits/sec).
+ * @param transientDb Peak amplitude of the transient burst in dBFS (e.g. −3).
+ * @param transientMs Duration of the burst envelope (e.g. 5 ms).
+ */
+export function transientBurst(args: {
+  sampleRate: number
+  durationSec: number
+  /** Peak amplitude of the noise bed, in dBFS. */
+  bedAmplitudeDb: number
+  /** Peak amplitude of each transient burst, in dBFS. */
+  transientDb: number
+  /** Time between transients, in ms. */
+  intervalMs: number
+  /** Duration of each transient burst's decay envelope, in ms. */
+  transientMs: number
+  seed: number
+}): StereoSignal {
+  const { sampleRate, durationSec, bedAmplitudeDb, transientDb, intervalMs, transientMs, seed } =
+    args
+  const n = Math.floor(durationSec * sampleRate)
+  const intervalSamples = Math.floor((intervalMs / 1000) * sampleRate)
+  const transientSamples = Math.floor((transientMs / 1000) * sampleRate)
+  const bedAmp = dbToGain(bedAmplitudeDb)
+  const transAmp = dbToGain(transientDb)
+
+  const out = new Float32Array(n * 2)
+  // Two independent pink-noise beds for L/R, seeded for reproducibility.
+  for (let ch = 0; ch < 2; ch++) {
+    const rand = mulberry32(seed + ch * 0x9e3779b9)
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0
+    let nextTransient = intervalSamples // first transient after one interval
+    for (let i = 0; i < n; i++) {
+      const white = rand() * 2 - 1
+      b0 = 0.99886 * b0 + white * 0.0555179
+      b1 = 0.99332 * b1 + white * 0.0750759
+      b2 = 0.969 * b2 + white * 0.153852
+      b3 = 0.8665 * b3 + white * 0.3104856
+      b4 = 0.55 * b4 + white * 0.5329522
+      b5 = -0.7616 * b5 - white * 0.016898
+      let sample = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.115926) * 0.11 * bedAmp
+      b6 = white * 0.5362
+
+      // Transient: schedule + exponential decay envelope.
+      if (i >= nextTransient && i < nextTransient + transientSamples) {
+        const intoTransient = i - nextTransient
+        // Exponential decay from 1 → ~0.01 over transientSamples.
+        const env = Math.exp(-5 * (intoTransient / transientSamples))
+        // The transient is a sharp click-like pulse (high-frequency weighted).
+        sample += white * transAmp * env
+      } else if (i >= nextTransient + transientSamples) {
+        nextTransient += intervalSamples
+      }
+      out[i * 2 + ch] = sample
+    }
+  }
+  return { samples: out, sampleRate, channels: 2 }
+}
+
+/**
+ * Band-limited noise approximating the human voice spectrum (300 Hz – 3 kHz).
+ *
+ * Real speech concentrates energy in the 300 Hz–3 kHz range. A flat-spectrum
+ * test signal like white/pink noise does not stress the limiter or K-weighting
+ * filter the same way. This generator produces pink noise then applies a simple
+ * band-pass to emulate the voice band, giving the tuner a spectrally-distinct
+ * scenario without needing real recordings.
+ *
+ * The band-pass is a one-pole high-pass at 300 Hz cascaded with a one-pole
+ * low-pass at 3 kHz — crude but sufficient to shift the spectral centroid into
+ * the voice range, which is all the tuner needs to detect frequency-dependent
+ * parameter biases.
+ */
+export function voiceBandNoise(args: {
+  sampleRate: number
+  durationSec: number
+  amplitudeDb: number
+  seed: number
+}): StereoSignal {
+  const { sampleRate, durationSec, amplitudeDb, seed } = args
+  const n = Math.floor(durationSec * sampleRate)
+  const scale = dbToGain(amplitudeDb)
+
+  // One-pole filter coefficients.
+  // High-pass at 300 Hz: y = x − lp(x), where lp has coeff α = 1 − e^(−2πf/fs).
+  const hpAlpha = 1 - Math.exp((-2 * Math.PI * 300) / sampleRate)
+  // Low-pass at 3 kHz: α = 1 − e^(−2πf/fs).
+  const lpAlpha = 1 - Math.exp((-2 * Math.PI * 3000) / sampleRate)
+
+  const out = new Float32Array(n * 2)
+  for (let ch = 0; ch < 2; ch++) {
+    const rand = mulberry32(seed + ch * 0x9e3779b9)
+    let lpState = 0 // for the high-pass's internal low-pass
+    let lpFinal = 0 // for the output low-pass
+    for (let i = 0; i < n; i++) {
+      const white = rand() * 2 - 1
+      // First: make it pink-ish (so the band-passed result isn't pure white).
+      // Minimal pink filter (1 stage) for spectral tilt.
+      lpState += hpAlpha * (white - lpState)
+      const highPassed = white - lpState
+      // Second: low-pass at 3 kHz.
+      lpFinal += lpAlpha * (highPassed - lpFinal)
+      out[i * 2 + ch] = lpFinal * scale
+    }
+  }
+  return { samples: out, sampleRate, channels: 2 }
 }
