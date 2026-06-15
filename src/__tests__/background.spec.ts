@@ -88,7 +88,7 @@ describe('background service worker (EqualLoud coordinator)', () => {
     expect(state.tabs.find((t) => t.tabId === 42)).toBeTruthy()
   })
 
-  it('does not send SET_GAIN for a tab with too few samples', async () => {
+  it('drives a too-few-samples tab to unity gain (no stale-gain freeze)', async () => {
     seedTab({ tabId: 2, shortTerm: -20, blockCount: 1, maxGainDb: 24 })
     ;(chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockClear()
 
@@ -97,10 +97,12 @@ describe('background service worker (EqualLoud coordinator)', () => {
       { tab: { id: 2 } } as chrome.runtime.MessageSender,
     )
 
-    // No SET_GAIN (computeBalanceGains skips tabs below MIN_BLOCKS).
-    expect(chrome.tabs.sendMessage).not.toHaveBeenCalledWith(
+    // computeBalanceGains now emits a unity decision for below-MIN_BLOCKS tabs
+    // so a jittery primary (Reels/Douyin) can't freeze the GainNode at a stale
+    // gain forever.
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
       2,
-      expect.objectContaining({ type: 'SET_GAIN' }),
+      expect.objectContaining({ type: 'SET_GAIN', tabId: 2, gainDb: 0 }),
     )
   })
 

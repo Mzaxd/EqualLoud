@@ -37,8 +37,16 @@ export function hasEnoughSamples(blockCount: number): boolean {
 
 /**
  * Decide the gain to apply to each tab to move its short-term loudness toward
- * `targetLufs`. Tabs that cannot be balanced (not capturing, too few samples,
- * or no finite measurement yet) are omitted from the result.
+ * `targetLufs`. Tabs that cannot be balanced (not capturing, or no finite
+ * measurement) are omitted from the result.
+ *
+ * Tabs whose LUFS is not yet trustworthy (too few samples — e.g. right after a
+ * primary switch on an infinite-feed site) get a **unity (0 dB) decision** rather
+ * than being skipped. Skipping used to leave whatever gain the GainNode last held
+ * in place; on Reels/Douyin/TikTok the primary jitters so often that a tab never
+ * accumulated MIN_BLOCKS samples and the gain froze at its last (possibly loud)
+ * value indefinitely — manifesting as the "+0 forever after toggling" bug.
+ * Driving these tabs to 0 dB every pass is self-correcting and safe.
  *
  * Per-tab balance bypass is handled by the caller (the SW pushes unity gain
  * for bypassed tabs separately); this function only ever sees tabs that should
@@ -49,8 +57,14 @@ export function computeBalanceGains(tabs: BalanceableTab[], targetLufs: number):
 
   for (const tab of tabs) {
     if (!tab.isCapturing) continue
-    if (!hasEnoughSamples(tab.blockCount)) continue
-    if (!Number.isFinite(tab.shortTerm)) continue
+
+    // Not enough samples yet, or no finite measurement: hold unity rather than
+    // inherit a stale gain. Still emit a decision so the caller drives the
+    // GainNode to 0 dB on every pass (self-correcting after primary jitter).
+    if (!hasEnoughSamples(tab.blockCount) || !Number.isFinite(tab.shortTerm)) {
+      decisions.push({ tabId: tab.tabId, gainDb: 0 })
+      continue
+    }
 
     const raw = targetLufs - tab.shortTerm
     const clamped = Math.max(DEFAULT_MIN_GAIN, Math.min(tab.maxGainDb, raw))

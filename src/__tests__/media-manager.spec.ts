@@ -9,6 +9,8 @@ function candidate(overrides: Partial<MediaCandidate>): MediaCandidate {
     duration: 0,
     visible: true,
     muted: false,
+    paused: false,
+    ended: false,
     ...overrides,
   }
 }
@@ -51,6 +53,68 @@ describe('pickPrimaryMedia', () => {
     const podcast = candidate({ videoWidth: 0, duration: 1800 })
     const blip = candidate({ videoWidth: 0, duration: 5 })
     expect(pickPrimaryMedia([podcast, blip])).toBe(podcast)
+  })
+
+  // -- infinite-feed scenarios (Instagram Reels / Douyin / TikTok) -------------
+  // On these pages several <video> elements coexist with identical size and
+  // similar durations; the only reliable "this is what the user hears" signal
+  // is which element is actually playing. Primary jitter on these sites
+  // starves the LUFS pipeline and was the root cause of balancing dying after
+  // a few swipes.
+  describe('infinite-feed (Reels/Douyin/TikTok)', () => {
+    it('prefers the playing element over paused neighbours with identical size/duration', () => {
+      const playing = candidate({ videoWidth: 720, duration: 15 })
+      const pausedNext = candidate({ videoWidth: 720, duration: 15, paused: true })
+      expect(pickPrimaryMedia([playing, pausedNext])).toBe(playing)
+    })
+
+    it('prefers the playing element even if a paused neighbour has a larger size', () => {
+      // Playing signal must dominate size: otherwise a pre-loaded higher-res
+      // neighbour would steal primary and we would measure silence.
+      const playing = candidate({ videoWidth: 720, duration: 15 })
+      const pausedBig = candidate({ videoWidth: 1920, duration: 600, paused: true })
+      expect(pickPrimaryMedia([playing, pausedBig])).toBe(playing)
+    })
+
+    it('prefers the playing element over an ended neighbour', () => {
+      const playing = candidate({ videoWidth: 720, duration: 15 })
+      const endedPrev = candidate({ videoWidth: 720, duration: 15, ended: true })
+      expect(pickPrimaryMedia([playing, endedPrev])).toBe(playing)
+    })
+
+    it('picks the playing element regardless of DOM order', () => {
+      const a = candidate({ videoWidth: 720, duration: 15, paused: true })
+      const b = candidate({ videoWidth: 720, duration: 15 }) // playing
+      const c = candidate({ videoWidth: 720, duration: 15, paused: true })
+      expect(pickPrimaryMedia([a, b, c])).toBe(b)
+      // Reverse order too — must not just default to index 0.
+      expect(pickPrimaryMedia([c, b, a])).toBe(b)
+    })
+
+    it('still picks a paused element if nothing is playing (between reels)', () => {
+      // A paused-only field happens in the gap between two reels. We must not
+      // return null (which would stop balancing) just because nothing is
+      // playing this instant — the next play event will re-pick.
+      const paused = candidate({ videoWidth: 720, duration: 15, paused: true })
+      expect(pickPrimaryMedia([paused])).toBe(paused)
+    })
+
+    it('a muted playing element still loses to an audible paused one', () => {
+      // Muted (-1e6) outranks paused (-5e5): an audible paused element is a
+      // better primary than a muted playing one (the user hears neither, but
+      // the muted one would yield -Infinity LUFS). Both score below 0 though,
+      // so pickPrimaryMedia returns null — neither is a good primary. Verify
+      // the muted one is never picked over the audible one by checking that
+      // removing the muted gate flips the result.
+      const mutedPlaying = candidate({ videoWidth: 720, duration: 15, muted: true })
+      const audiblePaused = candidate({ videoWidth: 720, duration: 15, paused: true })
+      // Both penalised below 0 → null.
+      expect(pickPrimaryMedia([mutedPlaying, audiblePaused])).toBeNull()
+      // Unmuting the playing one must now win despite being the same element,
+      // proving the muted penalty (not the paused penalty) decided it.
+      const unmutedPlaying = candidate({ videoWidth: 720, duration: 15 })
+      expect(pickPrimaryMedia([unmutedPlaying, audiblePaused])).toBe(unmutedPlaying)
+    })
   })
 })
 

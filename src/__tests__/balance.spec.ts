@@ -29,9 +29,13 @@ describe('computeBalanceGains', () => {
     expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: -4 }])
   })
 
-  it('skips tabs without enough samples', () => {
+  it('holds unity gain for tabs without enough samples (no stale-gain freeze)', () => {
+    // Previously these were skipped (returning []), which left whatever gain
+    // the GainNode last held frozen in place — on jittery feed sites a tab
+    // never reached MIN_BLOCKS and got stuck at its last (possibly loud) gain.
+    // Now we drive it to 0 dB every pass so it self-corrects.
     const tabs = [makeTab({ tabId: 1, shortTerm: -20, blockCount: 2 })]
-    expect(computeBalanceGains(tabs, -14)).toEqual([])
+    expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: 0 }])
   })
 
   it('balances tabs once they reach the minimum sample count', () => {
@@ -39,9 +43,10 @@ describe('computeBalanceGains', () => {
     expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: 6 }])
   })
 
-  it('skips tabs whose LUFS is -Infinity', () => {
+  it('holds unity gain for tabs whose LUFS is -Infinity (not yet measured)', () => {
+    // Same rationale as the too-few-samples case: don't inherit a stale gain.
     const tabs = [makeTab({ tabId: 1, shortTerm: -Infinity })]
-    expect(computeBalanceGains(tabs, -14)).toEqual([])
+    expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: 0 }])
   })
 
   it('skips tabs that are not capturing', () => {

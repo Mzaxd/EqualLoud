@@ -18,6 +18,17 @@ export interface MediaCandidate {
   /** offsetParent === null means the element is not rendered (display:none etc). */
   visible: boolean
   muted: boolean
+  /**
+   * Whether the element is actively playing. On infinite-feed sites (Instagram
+   * Reels, Douyin, TikTok) several `<video>` elements coexist in the DOM — the
+   * currently visible reel plus pre-loaded neighbours. They share the same
+   * videoWidth and similar durations, so size/duration scoring alone can't tell
+   * them apart and the primary jitters between elements as the user scrolls,
+   * which starves the LUFS pipeline. `!paused && !ended` is the only reliable
+   * "this is the one the user is hearing right now" signal.
+   */
+  paused: boolean
+  ended: boolean
 }
 
 /**
@@ -59,6 +70,13 @@ function score(c: MediaCandidate): number {
   // Gates: invisible or muted elements are almost certainly not the main media.
   s += c.visible ? 0 : -1_000_000
   s += c.muted ? -1_000_000 : 0
+  // Playing gate: on multi-video feed pages (Reels/Douyin/TikTok) many elements
+  // coexist with identical size/duration, so the deciding signal is "which one
+  // is actually playing". A paused/ended element is almost never what the user
+  // is hearing — penalise it harder than muted (which is -1e6) but below the
+  // "all candidates bad" threshold so a single paused element can still win if
+  // nothing else is playing (e.g. between reels). Picked via 1e6 > x > 5e5.
+  s += c.paused || c.ended ? -500_000 : 0
   // videoWidth is the strongest signal for video (a 1280px-wide main player
   // dwarfs a 320px ad). Use 1 for audio (videoWidth is 0).
   s += (c.videoWidth || 0) * 10
@@ -97,8 +115,43 @@ export class MediaManager {
   /** Called whenever the primary media element changes (may be null). */
   onPrimaryChange: ((primary: HTMLMediaElement | null) => void) | null = null
 
+  /**
+   * Document-level delegate for media events that change which element is
+   * "playing" or change its scored attributes (duration, videoWidth). Wired in
+   * {@link start}, removed in {@link stop}. Capture phase so we hear events
+   * from elements that stopPropagation (some SPAs do). One listener for all
+   * elements — cheaper than per-element addEventListener and survives DOM
+   * recycling without re-binding.
+   */
+  private readonly onMediaEvent = (ev: Event): void => {
+    const el = ev.target as HTMLMediaElement | null
+    if (!el || !this.handles.has(el)) return
+    // play/pause/durationchange/loadedmetadata all shift the primary scoring
+    // (F4 weights !paused heavily; duration/videoWidth feed the tie-breakers).
+    // A cheap repick — no DOM query, no attach/detach — so firing on every
+    // play/pause is fine even on Reels/Douyin where these fire constantly.
+    this.repickPrimary()
+  }
+
   constructor(private readonly attach: (el: HTMLMediaElement) => AudioGraphHandle | null) {
-    this.observer = new MutationObserver(() => this.rescan())
+    // attributeFilter on 'src': Reels/Douyin recycle <video> nodes by swapping
+    // src rather than creating new elements, so childList-only observation
+    // missed the "new clip loaded into the same node" transition entirely.
+    // Without this the primary stayed glued to a stale clip's LUFS readings.
+    this.observer = new MutationObserver((mutations) => {
+      // A src mutation on an attached element means a recycled reel just
+      // loaded new media — re-pick so the (now paused) recycled node loses to
+      // whichever node starts playing. Full rescan still handles add/remove.
+      let repick = false
+      for (const m of mutations) {
+        if (m.type === 'attributes' && m.attributeName === 'src') {
+          repick = true
+          break
+        }
+      }
+      this.rescan()
+      if (repick) this.repickPrimary()
+    })
   }
 
   /** Begin watching. Performs an initial scan. */
@@ -107,11 +160,22 @@ export class MediaManager {
     this.observer.observe(document.documentElement, {
       childList: true,
       subtree: true,
+      attributes: true,
+      attributeFilter: ['src'],
     })
+    // Media-event delegation: these fire before/around DOM mutations on feed
+    // sites and carry the "which element is actually playing now" truth that
+    // neither childList nor src-attribute observation can infer.
+    for (const type of MEDIA_REPICK_EVENTS) {
+      document.addEventListener(type, this.onMediaEvent, { capture: true })
+    }
   }
 
   stop(): void {
     this.observer.disconnect()
+    for (const type of MEDIA_REPICK_EVENTS) {
+      document.removeEventListener(type, this.onMediaEvent, { capture: true })
+    }
     for (const handle of this.handles.values()) handle.dispose()
     this.handles.clear()
     this.primary = null
@@ -182,6 +246,8 @@ export class MediaManager {
       duration: Number.isFinite(el.duration) ? el.duration : 0,
       visible: el.offsetParent !== null,
       muted: el.muted,
+      paused: el.paused,
+      ended: el.ended,
     }))
     const picked = pickPrimaryMedia(candidates)
     const next = picked ? picked.el : null
@@ -191,3 +257,18 @@ export class MediaManager {
     }
   }
 }
+
+/**
+ * Media events whose firing should trigger a primary re-pick. Each changes a
+ * scored attribute: play/pause flip the dominant `!paused` signal;
+ * durationchange/loadedmetadata fill in duration (and videoWidth for video)
+ * which break size/duration ties; loadstart fires when a recycled node loads a
+ * new src. Captured at the document level by {@link MediaManager.start}.
+ */
+const MEDIA_REPICK_EVENTS = [
+  'play',
+  'pause',
+  'durationchange',
+  'loadedmetadata',
+  'loadstart',
+] as const
