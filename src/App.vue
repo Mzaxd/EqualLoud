@@ -189,6 +189,14 @@ body,
 /* Main Content */
 .app-content {
   flex: 1;
+  /* overflow-x: clip is the GLOBAL guard against horizontal scrollbars: any
+     descendant that spills past the popup's right edge (e.g. an absolutely-
+     positioned tooltip bubble) is clipped invisibly instead of inflating
+     scrollWidth and surfacing a horizontal scrollbar. overflow-y stays auto so
+     the popup still scrolls vertically. Modern Chromium (the only target —
+     this is an MV3 extension popup) computes this to hidden-on-x but the
+     observable effect is identical: no horizontal scroll UI. */
+  overflow-x: clip;
   overflow-y: auto;
   padding: 12px 16px;
   display: flex;
