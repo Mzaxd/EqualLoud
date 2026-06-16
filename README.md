@@ -93,7 +93,7 @@ Then load in Chrome/Edge: `chrome://extensions/` → enable **Developer mode** �
 
 ```bash
 pnpm dev          # dev server with HMR for the popup
-pnpm test         # unit tests + algorithm evaluation suite
+pnpm test:all     # unit tests + algorithm evaluation suite
 pnpm test:e2e     # end-to-end tests (Playwright)
 pnpm lint         # ESLint --fix
 pnpm build        # type-check + production build (dist/ + release/release.zip)
@@ -155,7 +155,7 @@ pnpm build
 
 ```bash
 pnpm dev          # 开发服务器(popup HMR)
-pnpm test         # 单元测试 + 算法评估套件
+pnpm test:all     # 单元测试 + 算法评估套件
 pnpm test:e2e     # 端到端测试(Playwright)
 pnpm lint         # ESLint --fix
 pnpm build        # 类型检查 + 生产构建(dist/ + release/release.zip)

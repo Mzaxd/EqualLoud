@@ -10,9 +10,17 @@ task-oriented guide to modify, test, and ship EqualLoud safely. Read the
 - Dev (HMR for popup): `pnpm dev`
 - Build (type-check + bundle): `pnpm build`
 - Unit tests: `pnpm test:unit`
+- Balance-algo eval suite: `pnpm test:eval`
+- Unit + eval together: `pnpm test:all`
+- End-to-end (Playwright): `pnpm test:e2e`
+- Offline parameter tuner (see eval/): `pnpm tune`
 - Lint / format / type-check: `pnpm lint`, `pnpm format`, `pnpm type-check`
 
-Node engines: `^20.19.0 || >=22.12.0`.
+Run a **single test file** with a path filter, e.g.
+`pnpm test:unit src/__tests__/balance.spec.ts`. Eval-suite single files need their
+own config: `pnpm test:eval eval/convergence.spec.ts`.
+
+Node engines: `^20.19.0 || >=22.12.0`. Package manager is **pnpm**.
 
 ## What this project does
 
@@ -68,8 +76,8 @@ Key files:
 - [src/components/](src/components/) — `AutoBalance.vue`, `TabList.vue`
   (per-tab balance toggle), `Limiter.vue`.
 - [manifest.config.ts](manifest.config.ts) — MV3: `storage`, `tabs`,
-  `scripting`, `alarms`, `host_permissions: <all_urls>`, `content_scripts`
-  on `<all_urls>` at `document_idle`. **No** `tabCapture`/`activeTab`/`offscreen`.
+  `alarms`, `host_permissions: <all_urls>`, `content_scripts`
+  on `<all_urls>` at `document_idle`. **No** `tabCapture`/`activeTab`/`offscreen`/`scripting`.
 
 ## Message contract (PRD §6.4)
 
@@ -147,6 +155,22 @@ Popup → SW (request/response):
   - `background.spec.ts` — the SW router end-to-end (LUFS_REPORT → SET_GAIN,
     persistence, per-tab balance bypass, disable, unload).
   - `stores/tabs.spec.ts`, `i18n.spec.ts`, component specs.
+
+- Balance-algorithm evaluation (`vitest`, node env, separate config):
+  `pnpm test:eval`, in [eval/](eval/). A deterministic discrete-time closed-loop
+  **simulator** ([eval/simulate.ts](eval/simulate.ts)) that reproduces the data
+  path in pure TS — no browser — by importing the *real* `LufsCalculator` +
+  `computeBalanceGains`. Covers measurement accuracy vs closed-form analytic
+  truth, single/multi-tab convergence, realistic scenarios (ads, silence, level
+  jumps, the +12 dB ceiling), and stability. See [eval/README.md](eval/README.md)
+  for the per-scenario metric columns (`Tconv`, `SSerr`, `over`, `rippl`).
+- Offline tuner: `pnpm tune` ([eval/tune.ts](eval/tune.ts)) — the self-evolution
+  optimiser. Sweeps the control-loop knobs (4 balance + 3 limiter) in two stages,
+  scores each candidate, prints a ranked report. Changes to
+  [config.ts](src/audio/config.ts) / [balance.ts](src/audio/balance.ts) defaults
+  should be backed by a tune run + A/B listening validation, not a guess. Several
+  comments in those files reference the tuner's conclusions — they are
+  load-bearing context, don't tidy them away.
 
 Merge gates: green type-check + lint + unit tests. For message-contract changes
 add/adjust a handler test.
