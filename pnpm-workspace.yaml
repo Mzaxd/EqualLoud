@@ -1,0 +1,9 @@
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
+# pnpm 10+ ignores dependency build scripts (postinstall) by default for supply-
+# chain safety. Explicitly allow the ones we need; pnpm will prompt for any new
+# dependency that wants to run a build script.
+onlyBuiltDependencies:
+  - esbuild
+  - unrs-resolver
