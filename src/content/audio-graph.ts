@@ -22,6 +22,22 @@
  * If `createMediaElementSource` throws (the page already took the element, or
  * it's DRM-protected), we fall back to plain `element.volume` control so we can
  * at least attenuate (PRD §10.1, §10.5).
+ *
+ * ── Autoplay policy / lazy takeover ──────────────────────────────────────
+ * Calling `createMediaElementSource` on a *suspended* AudioContext routes the
+ * media's audio into a graph that isn't running → the element goes **silent**
+ * until the context resumes. The context can only become `running` inside a
+ * user-gesture handler (Chrome autoplay policy). Auto-play pages (Instagram
+ * Reels, YouTube, etc.) therefore need us to *defer* the takeover:
+ *
+ *   1. Before the first user gesture we hand back a "lazy" handle that controls
+ *      `element.volume` only (attenuate, never boost) and reports no LUFS. The
+ *      SW still sees `isCapturing`/heartbeats and keeps the tab at a safe 0 dB.
+ *   2. On the first gesture the content script calls `ensureContextAndUpgrade()`
+ *      (this module), which creates+resumes the context *inside the gesture*
+ *      and upgrades every pending element to the full Web Audio chain. The very
+ *      first audible sample is already balanced — no "original then corrected"
+ *      jump. The autoplay warning disappears because creation happens in-gesture.
  */
 
 import { GAIN_ATTACK_TC, GAIN_SMOOTH_TC } from '@/audio/config'
@@ -51,54 +67,184 @@ export interface AudioGraphHandle {
 // creating one per media element broke multi-video sites (Twitter, Reddit,
 // infinite-scroll YouTube) within seconds. One context serves N element
 // chains — source nodes are independent.
+//
+// The context is NOT created at attach time (see the lazy-takeover note in the
+// file header). It springs to life on the first user gesture, inside the
+// gesture handler, so Chrome's autoplay policy lets it become `running`.
 // ---------------------------------------------------------------------------
 
 let sharedCtx: AudioContext | null = null
 let workletReady: Promise<void> | null = null
 const attachedSources = new WeakSet<HTMLMediaElement>()
 
-function getSharedContext(): AudioContext {
+/**
+ * Elements that received a lazy (volume-only) handle and are waiting for the
+ * first user gesture to be upgraded to a full Web Audio chain. Each entry
+ * keeps the upgrade target alive so a late gesture still wires up the element.
+ */
+interface PendingTakeover {
+  el: HTMLMediaElement
+  /** Set once upgraded/disposed so a racing late gesture can't double-wire. */
+  done: boolean
+}
+const pending: PendingTakeover[] = []
+let contextHandshaken = false
+
+/**
+ * Whether it is currently legal to *create* the AudioContext and expect it to
+ * reach `running`. Chrome's autoplay policy allows this only while the document
+ * has a transient user activation. A muted-autoplay `play` event does NOT carry
+ * that activation, so we must NOT create the context from it — that is exactly
+ * what produced the "AudioContext was not allowed to start" warning.
+ *
+ * `navigator.userActivation` (Chrome/Edge) is the reliable signal; we fall back
+ * to `true` where it's absent (older browsers) so we never get permanently stuck
+ * — the worst case there is the original warning, not a dead feature.
+ */
+export function canCreateContext(): boolean {
+  const ua = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation
+  return ua ? ua.isActive : true
+}
+
+/**
+ * Create + resume the shared AudioContext, then upgrade every pending element
+ * to the full source→gain→limiter→worklet chain. MUST be called from within a
+ * user-gesture handler (pointerdown/keydown) — that is the whole point: it is
+ * what lets the context leave the `suspended` state.
+ *
+ * Guards the first creation with {@link canCreateContext} so that an autoplay
+ * `play` event (no user activation) can't trigger a warning-spewing creation.
+ * Once the context exists, repeated calls only resume + upgrade new pending
+ * elements (idempotent), which is safe regardless of activation state.
+ *
+ * @returns `true` if the context is (or got) `running` and takeovers happened.
+ */
+export function ensureContextAndUpgrade(): boolean {
+  // First-time creation is gesture-gated. Subsequent calls (context already
+  // exists) may resume/upgrade without an active gesture — cheap and harmless.
   if (!sharedCtx || sharedCtx.state === 'closed') {
+    if (!canCreateContext()) return false
+    // Created here, synchronously, inside the gesture → Chrome permits running.
     sharedCtx = new AudioContext()
-    // Load the LUFS worklet module once for the whole context. Subsequent
-    // AudioWorkletNode creations on this ctx reuse it without re-fetching.
     const workletUrl = chrome.runtime.getURL(lufsProcessorUrl)
     workletReady = sharedCtx.audioWorklet.addModule(workletUrl).catch((err) => {
       console.warn('[EqualLoud] LUFS worklet failed to load', err)
       workletReady = null // allow retry on next attach
     })
-    // Best-effort resume; autoplay policy may suspend until a user gesture.
-    // The content script also wires gesture listeners that call resumeAll().
-    void sharedCtx.resume().catch(() => {
-      /* retried on user gesture */
-    })
   }
-  return sharedCtx
-}
+  // resume() is the gesture-gated call; ignore the rare rejection (the context
+  // is already running, or the gesture wasn't accepted).
+  void sharedCtx.resume().catch(() => {
+    /* retried on next gesture */
+  })
+  if (sharedCtx.state === 'closed') return false
+  contextHandshaken = true
 
-/** Resume the shared context (called on user gesture / play event). */
-export function resumeSharedContext(): void {
-  if (sharedCtx && sharedCtx.state !== 'closed') {
-    void sharedCtx.resume().catch(() => {
-      /* ignore */
-    })
+  // Upgrade every still-pending element. A successful takeover swaps the lazy
+  // handle's internal impl in place (see attachAudioGraph) so MediaManager's
+  // map reference stays valid.
+  for (const p of pending) {
+    if (p.done) continue
+    p.done = true
+    upgradeTakeover(p.el)
   }
+  return true
 }
 
 /**
  * Attach an audio graph to a media element.
  *
- * @returns A handle, or `null` if attachment failed and we degraded to
- *          `element.volume` control (which is *not* returned because volume
- *          cannot boost — only attenuate). Callers should treat `null` as
- *          "skip this element for balancing".
+ * Returns a **lazy** handle. Before the first user gesture (see the
+ * lazy-takeover note in the file header) it controls `element.volume` only;
+ * `ensureContextAndUpgrade()` later swaps its internal `current` impl to the
+ * full Web Audio chain (source→gain→limiter→worklet). The handle object itself
+ * is stable and owns a single LUFS callback set that is shared with the full
+ * chain on upgrade, so MediaManager's reference never changes and every
+ * subscriber (plus its unsubscribe fn) keeps working across the swap.
+ *
+ * @returns A handle, or `null` if the element was already taken over.
  */
 export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null {
-  // Guard against double-attach of the same element: createMediaElementSource
-  // throws InvalidStateError if already called on this element.
   if (attachedSources.has(el)) return null
 
-  const ctx = getSharedContext()
+  // Already handshaken (e.g. SPA adds media after the first gesture): build the
+  // full chain right away, no lazy phase needed.
+  if (contextHandshaken && sharedCtx && sharedCtx.state !== 'closed') {
+    return buildWebAudioHandle(el) ?? makeVolumeFallback(el)
+  }
+
+  // Lazy phase. `current` holds the active impl (volume fallback → full chain);
+  // `lufsCbs` is the SINGLE source of truth for this handle's subscribers. On
+  // upgrade we hand that very set to buildWebAudioHandle so the worklet writes
+  // measurements into it directly — no re-subscription loop, and the
+  // unsubscribe functions returned before the upgrade keep working because
+  // they all close over this one set. The handle object never changes, so
+  // MediaManager's map reference stays valid across the swap.
+  let current: AudioGraphHandle = makeVolumeFallback(el)
+  let disposed = false
+  const lufsCbs = new Set<(u: LufsUpdate) => void>()
+
+  const pendingEntry: PendingTakeover = { el, done: false }
+  pending.push(pendingEntry)
+  // Stash the upgrade hook + the shared callback set on the entry so
+  // module-scope upgradeTakeover can build the chain against this handle's
+  // subscribers without leaking internals through the public API.
+  type PendingWithHooks = PendingTakeover & {
+    upgrade?: (full: AudioGraphHandle) => void
+    lufsCbs?: Set<(u: LufsUpdate) => void>
+  }
+  const hooks = pendingEntry as PendingWithHooks
+  hooks.lufsCbs = lufsCbs
+  hooks.upgrade = (full: AudioGraphHandle): void => {
+    if (disposed) {
+      // Element was disposed before the gesture arrived; tear down the chain we
+      // just built so its nodes don't leak.
+      full.dispose()
+      return
+    }
+    current = full
+  }
+
+  const handle: AudioGraphHandle = {
+    setGain(gainDb) {
+      current.setGain(gainDb)
+    },
+    setLimiter(settings) {
+      current.setLimiter(settings)
+    },
+    onLufs(cb) {
+      lufsCbs.add(cb)
+      return () => lufsCbs.delete(cb)
+    },
+    dispose() {
+      if (disposed) return
+      disposed = true
+      pendingEntry.done = true
+      lufsCbs.clear()
+      current.dispose()
+      attachedSources.delete(el)
+    },
+  }
+  return handle
+}
+
+/**
+ * Build the full Web Audio chain for an element on the shared context.
+ * Returns `null` if `createMediaElementSource` throws (page took the element /
+ * DRM) — caller then falls back to volume control.
+ *
+ * @param sharedLufsCbs When upgrading a lazy handle, pass its callback set so
+ *   the worklet fans its measurements out to the *already-subscribed* listeners
+ *   through that very set — no re-subscription is needed on upgrade, and the
+ *   lazy handle's unsubscribe functions keep working unchanged. Omit it for a
+ *   standalone build and a fresh set is created.
+ */
+function buildWebAudioHandle(
+  el: HTMLMediaElement,
+  sharedLufsCbs?: Set<(u: LufsUpdate) => void>,
+): AudioGraphHandle | null {
+  if (!sharedCtx) return null
+  const ctx = sharedCtx
   let source: MediaElementAudioSourceNode
   try {
     // This can throw: InvalidStateError if the page already took the element,
@@ -107,8 +253,7 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
     attachedSources.add(el)
   } catch (err) {
     console.warn('[EqualLoud] createMediaElementSource failed; degrading to volume', err)
-    // Degrade: tweak element.volume directly. Can't boost, but can attenuate.
-    return makeVolumeFallback(el)
+    return null
   }
 
   const gain = ctx.createGain()
@@ -129,7 +274,9 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
   // or Chrome will not pull samples through it. The processor outputs silence.
   let worklet: AudioWorkletNode | null = null
   let listener: ((ev: MessageEvent) => void) | null = null
-  const lufsCbs = new Set<(u: LufsUpdate) => void>()
+  // Use the caller's set when upgrading (so existing subscribers + their
+  // unsubscribes keep working against the same set); otherwise a fresh one.
+  const lufsCbs = sharedLufsCbs ?? new Set<(u: LufsUpdate) => void>()
   // Guard against the async worklet-ready firing after dispose(): without this,
   // a fast SPA navigation that removes the element before the worklet finishes
   // loading would resurrect nodes on a torn-down chain and throw.
@@ -203,6 +350,36 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
   }
 }
 
+/**
+ * Upgrade one pending lazy element to a full Web Audio chain, swapping its lazy
+ * handle's internal impl in place (so MediaManager's reference stays valid).
+ * Called from `ensureContextAndUpgrade()` for every pending entry. If the
+ * element can't be taken over (page/DRM already claimed it) the handle stays on
+ * volume control.
+ *
+ * The lazy handle's callback set is passed through so the worklet writes into
+ * the SAME set the content script subscribed to — existing subscribers (and
+ * their unsubscribe functions) keep working with zero re-subscription.
+ */
+function upgradeTakeover(el: HTMLMediaElement): void {
+  const entry = pending.find((p) => p.el === el) as
+    | (PendingTakeover & {
+        upgrade?: (full: AudioGraphHandle) => void
+        lufsCbs?: Set<(u: LufsUpdate) => void>
+      })
+    | undefined
+  // Build against the lazy handle's subscriber set when present.
+  const full = buildWebAudioHandle(el, entry?.lufsCbs)
+  if (full && entry?.upgrade) {
+    entry.upgrade(full)
+  } else if (full) {
+    // No lazy handle to swap (shouldn't happen in practice) — release the chain.
+    full.dispose()
+  }
+  const idx = pending.findIndex((p) => p.el === el)
+  if (idx >= 0) pending.splice(idx, 1)
+}
+
 // ---------------------------------------------------------------------------
 // Limiter helpers — map user-facing limiter settings onto a DynamicsCompressor.
 // ---------------------------------------------------------------------------
@@ -216,13 +393,21 @@ const DEFAULT_LIMITER_OFF: LimiterSettings = {
   releaseMs: 250,
 }
 
+// Clamp a limiter param into a [lo, hi] range. DynamicsCompressorNode would
+// otherwise clamp silently AND log a console warning when fed an out-of-range
+// value (e.g. "value 30 outside nominal range [1, 20]"); clamping here also
+// neutralises stale persisted settings from an older extension version
+// (ratio=30) so they can't re-trigger the warning on every SET_LIMITER.
+export const clampLimiter = (v: number, [lo, hi]: readonly [number, number]): number =>
+  v < lo ? lo : v > hi ? hi : v
+
 function applyLimiter(node: DynamicsCompressorNode, time: number, settings: LimiterSettings): void {
   if (settings.enabled) {
-    node.threshold.setValueAtTime(settings.thresholdDb, time)
-    node.knee.setValueAtTime(settings.kneeDb, time)
-    node.ratio.setValueAtTime(settings.ratio, time)
-    node.attack.setValueAtTime(settings.attackMs / 1000, time)
-    node.release.setValueAtTime(settings.releaseMs / 1000, time)
+    node.threshold.setValueAtTime(clampLimiter(settings.thresholdDb, [-100, 0]), time)
+    node.knee.setValueAtTime(clampLimiter(settings.kneeDb, [0, 40]), time)
+    node.ratio.setValueAtTime(clampLimiter(settings.ratio, [1, 20]), time)
+    node.attack.setValueAtTime(clampLimiter(settings.attackMs, [0, 1000]) / 1000, time)
+    node.release.setValueAtTime(clampLimiter(settings.releaseMs, [0, 1000]) / 1000, time)
   } else {
     // Bypass: threshold at 0 dB with 1:1 ratio = no compression.
     node.threshold.setValueAtTime(0, time)
