@@ -10,7 +10,7 @@
 import { BOOST_REPORT_HZ, BOOST_REPORT_MS, LUFS_REPORT_HZ } from '@/audio/config'
 import type { SwToContentMessage } from '@/messages/protocol'
 
-import { attachAudioGraph, resumeSharedContext } from './audio-graph'
+import { attachAudioGraph, ensureContextAndUpgrade } from './audio-graph'
 import { MediaManager } from './media-manager'
 import { notifySw, onSwMessage } from './messenger'
 
@@ -132,14 +132,23 @@ function startEqualLoud(): void {
   window.addEventListener('popstate', onNav)
   const restoreHistory = patchHistoryApi(onNav)
 
-  // Autoplay policy: resume the shared AudioContext on first user gesture / play.
-  // `play` has no { once } because the context can be re-suspended (e.g. after
-  // a long backgrounding); we want every play to nudge it back. The listener is
-  // explicitly removed on pagehide below.
-  const resumeAll = () => resumeSharedContext()
-  window.addEventListener('pointerdown', resumeAll, { once: true })
-  window.addEventListener('keydown', resumeAll, { once: true })
-  document.addEventListener('play', resumeAll, { capture: true })
+  // Autoplay policy: the shared AudioContext can only become `running` inside a
+  // user-gesture handler, and until it does the media elements stay on the lazy
+  // volume-only handles (see audio-graph.ts). The first gesture triggers the
+  // real takeover: context is created+resumed in-gesture and every pending
+  // element is upgraded to the full Web Audio chain — so the first audible
+  // sample is already balanced, with no "original then corrected" jump and no
+  // "AudioContext was not allowed to start" warning.
+  //
+  // `pointerdown`/`keydown` are `{ once }` because they're the *initial*
+  // handshake — once the context exists and elements are upgraded we don't
+  // need to re-trigger takeover. `play` stays persistent: a user-initiated
+  // play (e.g. clicking a page's own play button) is also a valid activation,
+  // and ensureContextAndUpgrade is idempotent, so firing it repeatedly is free.
+  const handshake = () => ensureContextAndUpgrade()
+  window.addEventListener('pointerdown', handshake, { once: true })
+  window.addEventListener('keydown', handshake, { once: true })
+  document.addEventListener('play', handshake, { capture: true })
 
   // Clean up on page unload so the SW drops this tab. Capture every listener we
   // added so nothing leaks; also restore the history API patch (important if the
@@ -149,9 +158,9 @@ function startEqualLoud(): void {
     if (reportTimer !== null) window.clearTimeout(reportTimer)
     off()
     window.removeEventListener('popstate', onNav)
-    window.removeEventListener('pointerdown', resumeAll)
-    window.removeEventListener('keydown', resumeAll)
-    document.removeEventListener('play', resumeAll, { capture: true } as EventListenerOptions)
+    window.removeEventListener('pointerdown', handshake)
+    window.removeEventListener('keydown', handshake)
+    document.removeEventListener('play', handshake, { capture: true } as EventListenerOptions)
     window.removeEventListener('pagehide', onPageHide)
     restoreHistory()
     notifySw({ type: 'TAB_UNLOAD', tabId })
