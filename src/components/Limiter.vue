@@ -28,7 +28,7 @@ const thresholdHint = computed(() => {
 const ratioHint = computed(() => {
   const v = ratio.value
   if (v <= 4) return t('limiter.hints.ratio.gentle')
-  if (v <= 20) return t('limiter.hints.ratio.standard')
+  if (v <= 12) return t('limiter.hints.ratio.standard')
   return t('limiter.hints.ratio.brickwall')
 })
 
@@ -163,13 +163,13 @@ function formatRatio(x: number): string {
             type="range"
             class="param-slider ratio-slider"
             min="1"
-            max="60"
+            max="20"
             step="1"
             :value="ratio"
             :disabled="!isEnabled"
             @input="handleRatioChange"
           />
-          <span class="slider-label">60</span>
+          <span class="slider-label">20</span>
         </div>
         <div class="param-hint">{{ ratioHint }}</div>
       </div>

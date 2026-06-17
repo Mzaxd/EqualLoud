@@ -83,7 +83,11 @@ async function loadSettings(): Promise<void> {
       if (typeof v === 'number' && Number.isFinite(v)) picked[k] = v
     }
     if (typeof storedLimiter.ratio === 'number' && Number.isFinite(storedLimiter.ratio)) {
-      picked.ratio = storedLimiter.ratio
+      // Clamp to the Web Audio DynamicsCompressorNode range [1, 20]. Older
+      // versions defaulted to ratio=30; without this, the stale value is read
+      // back on every SW restart and re-triggers the "value 30 outside nominal
+      // range [1, 20]" console warning when applied to the node.
+      picked.ratio = Math.min(20, Math.max(1, storedLimiter.ratio))
     }
     limiter = { ...limiter, ...picked }
   }

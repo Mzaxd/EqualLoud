@@ -56,7 +56,10 @@ export interface GainDecision {
   gainDb: number
 }
 
-export function hasEnoughSamples(blockCount: number, minBlocks = MIN_BLOCKS_FOR_RELIABLE_LUFS): boolean {
+export function hasEnoughSamples(
+  blockCount: number,
+  minBlocks = MIN_BLOCKS_FOR_RELIABLE_LUFS,
+): boolean {
   return blockCount >= minBlocks
 }
 

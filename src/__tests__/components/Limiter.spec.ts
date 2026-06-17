@@ -90,7 +90,7 @@ describe('Limiter', () => {
       // Defaults: threshold=-1 (aggressive), ratio=20 (standard boundary→brickwall at >20),
       // attack=1 (fast), release=100 (balanced), knee=0 (hard)
       expect(wrapper.text()).toContain('Aggressive')
-      expect(wrapper.text()).toContain('Standard')
+      expect(wrapper.text()).toContain('Brick wall')
       expect(wrapper.text()).toContain('Fast - catches transients')
       expect(wrapper.text()).toContain('Balanced')
       expect(wrapper.text()).toContain('Hard knee')
