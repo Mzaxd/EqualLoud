@@ -127,6 +127,20 @@ function startEqualLoud(): void {
   // Start watching the DOM.
   manager.start()
 
+  // Session-restore / late-injection recovery: if the content script injected
+  // AFTER a media element was already playing (e.g. Chrome restart → tab
+  // restored → B站 video resumed autoplay), no NEW `play` event will fire, so
+  // the lazy→full takeover would never be triggered. Probe once after the
+  // MutationObserver has had a chance to discover and attach the element: if an
+  // audibly-playing element exists, ensureContextAndUpgrade() is now authorised
+  // (audible playback == playback permission) and lifts it onto a running
+  // context. Harmless no-op when nothing is playing yet (gesture path handles
+  // it later). Wrapped in setTimeout so the observer's initial rescan callback
+  // runs first and populates the pending list.
+  setTimeout(() => {
+    ensureContextAndUpgrade()
+  }, 0)
+
   // SPA navigation: re-scan on URL changes (YouTube, etc.).
   const onNav = () => manager.rescan()
   window.addEventListener('popstate', onNav)

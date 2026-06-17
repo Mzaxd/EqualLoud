@@ -9,6 +9,13 @@ import { canCreateContext, clampLimiter } from '@/content/audio-graph'
  * warning). It is pure logic over navigator.userActivation, so we test it
  * directly; the rest of audio-graph.ts is Web-Audio/DOM-bound and validated by
  * the manual Instagram test (per AGENT.md's "pure functions only" test rule).
+ *
+ * The gate also accepts an `audiblePlayback` hint: if a media element is
+ * already playing NON-MUTED, Chrome has already granted playback permission
+ * (session-restore autoplay, prior user gesture on the element, etc.), so it's
+ * safe to create a running context even without a *live* userActivation. This
+ * is what unblocks the "reload Chrome → tab restores → video autoplays →
+ * EqualLoud stays dead" bug.
  */
 describe('canCreateContext', () => {
   const originalDescriptor = Object.getOwnPropertyDescriptor(navigator, 'userActivation')
@@ -41,6 +48,22 @@ describe('canCreateContext', () => {
   it('falls back to true when userActivation is absent (old browsers never get stuck)', () => {
     setUserActivation(undefined)
     expect(canCreateContext()).toBe(true)
+  })
+
+  it('returns true on session-restore autoplay: no gesture BUT a media element is audibly playing', () => {
+    // The bug: Chrome restart → tab restored → B站 video autoplays (non-muted,
+    // Chrome inherited playback permission). userActivation.isActive is false,
+    // yet the element IS producing sound — so creating a context is legal.
+    setUserActivation(false)
+    expect(canCreateContext({ audiblePlayback: true })).toBe(true)
+  })
+
+  it('still returns false for MUTED autoplay even with audiblePlayback hint', () => {
+    // The hint must reflect *audible* playback; a muted element autoplaying
+    // does NOT carry playback permission for an audio graph, and creating a
+    // context would still warn.
+    setUserActivation(false)
+    expect(canCreateContext({ audiblePlayback: false })).toBe(false)
   })
 })
 
