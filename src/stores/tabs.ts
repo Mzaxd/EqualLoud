@@ -168,7 +168,10 @@ export const useTabsStore = defineStore('tabs', () => {
   function startPolling(): void {
     if (pollInterval) return
     void fetchState()
-    pollInterval = window.setInterval(() => void fetchState(), 100)
+    // 4 Hz is plenty for the loudness meter + gain readouts (human perception
+    // of an indicator bar tops out around there); 10 Hz just churned reactive
+    // updates and restarted the fill width transition before it could finish.
+    pollInterval = window.setInterval(() => void fetchState(), 250)
     if (!storageListener) {
       storageListener = (changes) => {
         if (changes.settings?.newValue) settings.value = changes.settings.newValue as Settings

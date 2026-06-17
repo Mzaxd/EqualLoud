@@ -2,26 +2,56 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import InfoTip from '@/components/InfoTip.vue'
 import { useDebouncedCallback } from '@/composables/useDebouncedRef'
 import { useTabsStore } from '@/stores/tabs'
+
+/**
+ * Target-volume control + the combined loudness meter.
+ *
+ * The meter is a single groove that overlays two things: a fill bar whose
+ * width tracks the *loudest currently-balanced tab's* short-term LUFS (the
+ * "ambient glow" — the most prominent sound right now), and a draggable knob
+ * that sets the target LUFS. Both share the [-60, 0] LUFS range so the knob
+ * sits visually where the target sits relative to live loudness.
+ *
+ * "Loudest balanced tab" is a popup-side heuristic (the SW has no notion of a
+ * primary tab). It is exactly what a listener perceives as the dominant source,
+ * and it updates every poll (≈100 ms) so the glow feels live.
+ */
+defineOptions({ name: 'AutoBalance' })
 
 const tabsStore = useTabsStore()
 const { t } = useI18n()
 
 const targetLufs = computed(() => tabsStore.targetLufs)
 const isAutoBalancing = computed(() => tabsStore.isAutoBalancing)
-const tabCount = computed(() => tabsStore.tabs.length)
 
-const statusText = computed(() => {
-  if (!isAutoBalancing.value) return t('popup.status.disabled')
-  if (tabCount.value === 0) return t('popup.status.waiting')
-  return t('popup.status.balancing', { count: tabCount.value })
+/**
+ * The short-term LUFS of the loudest tab that is both capturing and being
+ * balanced right now. Falls back to -Infinity (→ fill at 0%) when nothing is
+ * playing, so the glow simply fades out rather than freezing on a stale value.
+ */
+const primaryShortTerm = computed(() => {
+  let loudest = -Infinity
+  for (const tab of tabsStore.tabs) {
+    if (!tab.isCapturing || !tab.balanceEnabled) continue
+    if (tab.shortTerm > loudest) loudest = tab.shortTerm
+  }
+  return loudest
 })
+
+/** Map a LUFS value in [-60, 0] to a [0, 100] percentage for the meter. */
+function pct(lufs: number): number {
+  if (!Number.isFinite(lufs)) return 0
+  return Math.max(0, Math.min(100, ((lufs + 60) / 60) * 100))
+}
+
+const fillPct = computed(() => (isAutoBalancing.value ? pct(primaryShortTerm.value) : 0))
+const knobPct = computed(() => pct(targetLufs.value))
 
 // Debounce: a slider drag fires @input on every pixel; without this each tick
 // sends SET_TARGET_LUFS (which force-resets the SW's balance throttle and
-// triggers a full rebalance + storage write). 150ms trailing coalesces a drag
+// triggers a full rebalance + storage write). 150 ms trailing coalesces a drag
 // into one round-trip once the user pauses.
 const debouncedSetTarget = useDebouncedCallback((value: number) => {
   void tabsStore.setTargetLufs(value)
@@ -34,206 +64,135 @@ function handleTargetChange(event: Event): void {
     debouncedSetTarget(value)
   }
 }
-
-async function handleToggleAutoBalance(): Promise<void> {
-  await tabsStore.toggleAutoBalance()
-}
 </script>
 
 <template>
-  <div class="auto-balance">
-    <!-- Toggle Row -->
-    <div class="toggle-row">
-      <div class="toggle-info">
-        <span class="toggle-label">
-          {{ t('autobalance.title') }}
-          <InfoTip :tip="t('autobalance.tooltips.targetVolume')" />
-        </span>
-        <span class="status-text">{{ statusText }}</span>
-      </div>
-      <button
-        class="toggle-switch"
-        :class="{ active: isAutoBalancing }"
-        @click="handleToggleAutoBalance"
-      >
-        <span class="toggle-track">
-          <span class="toggle-thumb"></span>
-        </span>
-      </button>
+  <div class="target" :class="{ 'is-off': !isAutoBalancing }">
+    <div class="target-row">
+      <span class="lab">{{ t('autobalance.title') }}</span>
+      <span class="v">{{ targetLufs }} LUFS</span>
     </div>
 
-    <!-- Target LUFS Slider (shown when enabled) -->
-    <Transition name="fade">
-      <div v-if="isAutoBalancing" class="target-section">
-        <div class="slider-row">
-          <span class="slider-label">-60</span>
-          <input
-            type="range"
-            class="target-slider"
-            min="-60"
-            max="0"
-            step="1"
-            :value="targetLufs"
-            @input="handleTargetChange"
-          />
-          <span class="slider-label">0</span>
-        </div>
-        <div class="target-value">
-          <span>{{ targetLufs }} LUFS</span>
-          <InfoTip :tip="t('autobalance.tooltips.lufs')" />
-        </div>
+    <!-- Combined meter: fill (live loudness) + knob (target) in one groove,
+         with an invisible range input laid over the whole thing to capture
+         drags anywhere along the track. -->
+    <div class="combined">
+      <div class="c-track">
+        <div class="c-fill" :style="{ width: fillPct + '%' }"></div>
+        <div class="c-knob" :style="{ left: knobPct + '%' }"></div>
       </div>
-    </Transition>
+      <input
+        class="c-input target-slider"
+        type="range"
+        min="-60"
+        max="0"
+        step="1"
+        :value="targetLufs"
+        :disabled="!isAutoBalancing"
+        :aria-label="t('autobalance.title')"
+        @input="handleTargetChange"
+      />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.auto-balance {
-  background: #fff;
-  border-radius: 12px;
-  padding: 14px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+.target {
+  margin: 14px 0 0;
 }
 
-.toggle-row {
+.target-row {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  margin-bottom: 10px;
 }
 
-.toggle-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.target-row .lab {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
 }
 
-.toggle-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #1a1a2e;
+.target-row .v {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  color: var(--honey);
+  font-variant-numeric: tabular-nums;
 }
 
-.status-text {
-  font-size: 11px;
-  color: #888;
-}
-
-/* Toggle Switch */
-.toggle-switch {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.toggle-track {
-  display: block;
-  width: 44px;
-  height: 26px;
-  background: #d0d5dd;
-  border-radius: 13px;
+/* Combined meter */
+.combined {
   position: relative;
-  transition: background 0.2s ease;
+  height: 30px;
+  margin-top: 14px;
 }
 
-.toggle-switch.active .toggle-track {
-  background: #48bb78;
-}
-
-.toggle-thumb {
+.c-track {
   position: absolute;
-  width: 22px;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 10px;
+  border-radius: 0;
+  background: oklch(16% 0.014 50);
+  overflow: visible;
+}
+
+.c-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50%;
+  border-radius: 0;
+  background: linear-gradient(90deg, oklch(55% 0.09 70), var(--honey));
+  box-shadow: 0 0 10px var(--honey-soft);
+  /* The fill width updates every poll tick (~250ms). Promote it to its own
+   * compositor layer so width changes don't trigger a paint of the surrounding
+   * layout; ease-out + a slightly longer duration keeps the motion smooth even
+   * when a new value arrives mid-transition. */
+  will-change: width;
+  transition: width 0.2s ease-out;
+}
+
+.c-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
   height: 22px;
-  background: #fff;
-  border-radius: 50%;
-  top: 2px;
-  left: 2px;
-  transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  border-radius: 0;
+  background: oklch(96% 0.01 72);
+  border: none;
+  border-top: 2px solid var(--honey);
+  border-bottom: 2px solid var(--honey);
+  box-shadow: 0 2px 6px oklch(8% 0.02 50 / 0.5);
+  pointer-events: none;
 }
 
-.toggle-switch.active .toggle-thumb {
-  transform: translateX(18px);
-}
-
-/* Target Slider */
-.target-section {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #f0f0f0;
-}
-
-.slider-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.slider-label {
-  font-size: 10px;
-  color: #aaa;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  width: 18px;
-}
-
-.slider-label:last-child {
-  text-align: right;
-}
-
-.target-slider {
-  flex: 1;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: #e0e0e0;
-  border-radius: 2px;
-  outline: none;
-  cursor: pointer;
-}
-
-.target-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  background: #fff;
-  border: 2px solid #48bb78;
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-  transition: transform 0.1s ease;
-}
-
-.target-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-}
-
-.target-value {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  margin-top: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #48bb78;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-}
-
-/* Fade transition */
-.fade-enter-active,
-.fade-leave-active {
-  transition: all 0.2s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
+/* The real input is invisible and covers the whole track so dragging anywhere
+   moves the target. Native thumb styling is hidden (opacity:0) — the visible
+   knob is .c-knob above, kept in sync via :value + the width calc. */
+.c-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
-  transform: translateY(-4px);
+  cursor: pointer;
+}
+
+.c-input:disabled {
+  cursor: not-allowed;
+}
+
+/* Off state: dim the fill so the meter reads as inactive without hiding the
+   last target position (the knob stays put as a reminder of the setting). */
+.target.is-off .c-fill {
+  opacity: 0.25;
 }
 </style>

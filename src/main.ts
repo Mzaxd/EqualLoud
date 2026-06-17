@@ -1,3 +1,8 @@
+// Design tokens + bundled fonts must load before any component renders, so the
+// 暖夜灯 oklch variables and @font-face families are available on first paint.
+import './styles/tokens.css'
+import './styles/fonts.css'
+
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
 import { createApp } from 'vue'

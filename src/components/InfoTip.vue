@@ -161,21 +161,21 @@ async function computeAlignment(): Promise<void> {
   justify-content: center;
   width: 13px;
   height: 13px;
-  border-radius: 50%;
-  border: 1px solid #c0c4cc;
-  color: #909399;
+  border-radius: 0;
+  border: 1px solid var(--hair);
+  color: var(--faint);
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
-  background: #fafafa;
+  background: var(--surface);
   transition: all 0.15s ease;
 }
 
 .info-tip:hover .info-tip-icon,
 .info-tip:focus .info-tip-icon {
-  border-color: #48bb78;
-  color: #48bb78;
-  background: #f0fdf4;
+  border-color: var(--honey);
+  color: var(--honey);
+  background: var(--honey-soft);
 }
 
 .info-tip-bubble {
@@ -183,13 +183,14 @@ async function computeAlignment(): Promise<void> {
   width: max-content;
   max-width: 240px;
   padding: 7px 9px;
-  background: #1a1a2e;
-  color: #f7f8fa;
+  background: var(--bg-deep);
+  color: var(--fg);
   font-size: 11px;
   font-weight: 400;
   line-height: 1.45;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border-radius: 0;
+  border: 1px solid var(--hair);
+  box-shadow: 0 4px 12px oklch(8% 0.02 50 / 0.4);
   /* Hidden state: invisible + non-interactive so it doesn't block sliders. */
   opacity: 0;
   visibility: hidden;
@@ -254,13 +255,13 @@ async function computeAlignment(): Promise<void> {
 /* Arrow on the bottom edge, pointing down (default/above placement). */
 .info-tip-bubble.placement-top::after {
   top: 100%;
-  border-top-color: #1a1a2e;
+  border-top-color: var(--bg-deep);
 }
 
 /* Arrow on the top edge, pointing up (flipped/below placement). */
 .info-tip-bubble.placement-bottom::after {
   bottom: 100%;
-  border-bottom-color: #1a1a2e;
+  border-bottom-color: var(--bg-deep);
 }
 
 .info-tip:hover .info-tip-bubble,

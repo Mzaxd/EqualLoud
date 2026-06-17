@@ -27,32 +27,31 @@ describe('AutoBalance', () => {
     })
   }
 
-  it('renders the title', () => {
+  it('renders the target label', () => {
     const wrapper = mountComponent()
     expect(wrapper.text()).toContain('Target Volume')
   })
 
-  it('shows disabled status when auto-balance is off', () => {
+  it('renders the target LUFS value', () => {
     const wrapper = mountComponent()
-    expect(wrapper.text()).toContain('Volume balancing is off')
+    expect(wrapper.text()).toContain('-14 LUFS')
   })
 
-  it('renders the toggle button', () => {
+  it('renders the combined meter track and target slider', () => {
     const wrapper = mountComponent()
-    const toggle = wrapper.find('.toggle-switch')
-    expect(toggle.exists()).toBe(true)
+    // The combined meter: a groove (.c-track) + an invisible range input.
+    expect(wrapper.find('.c-track').exists()).toBe(true)
+    expect(wrapper.find('.target-slider').exists()).toBe(true)
   })
 
-  it('toggle button does not have active class when disabled', () => {
+  it('marks the target as off (dimmed fill) when auto-balance is disabled', () => {
     const wrapper = mountComponent()
-    const toggle = wrapper.find('.toggle-switch')
-    expect(toggle.classes()).not.toContain('active')
+    expect(wrapper.find('.target').classes()).toContain('is-off')
   })
 
-  it('does not show target slider when disabled', () => {
+  it('disables the target slider when auto-balance is off', () => {
     const wrapper = mountComponent()
-    const slider = wrapper.find('.target-slider')
-    expect(slider.exists()).toBe(false)
+    expect(wrapper.find('.target-slider').attributes('disabled')).toBeDefined()
   })
 
   describe('with mocked auto-balance enabled', () => {
@@ -67,7 +66,7 @@ describe('AutoBalance', () => {
               title: 'Tab',
               url: 'https://test.com',
               isCapturing: true,
-              shortTerm: -20,
+              shortTerm: -18,
               blockCount: 50,
               appliedGainDb: 0,
               maxGainDb: 12,
@@ -80,46 +79,34 @@ describe('AutoBalance', () => {
       }))
     })
 
-    it('shows active toggle when enabled', async () => {
+    async function mountEnabled() {
       vi.resetModules()
       setActivePinia(createPinia())
       const { default: AutoBalanceOn } = await import('@/components/AutoBalance.vue')
-      const wrapper = mount(AutoBalanceOn, {
-        global: { plugins: [i18n] },
-      })
-      const toggle = wrapper.find('.toggle-switch')
-      expect(toggle.classes()).toContain('active')
+      return mount(AutoBalanceOn, { global: { plugins: [i18n] } })
+    }
+
+    it('drops the is-off class when enabled', async () => {
+      const wrapper = await mountEnabled()
+      expect(wrapper.find('.target').classes()).not.toContain('is-off')
     })
 
-    it('shows balancing status with count when enabled', async () => {
-      vi.resetModules()
-      setActivePinia(createPinia())
-      const { default: AutoBalanceOn } = await import('@/components/AutoBalance.vue')
-      const wrapper = mount(AutoBalanceOn, {
-        global: { plugins: [i18n] },
-      })
-      expect(wrapper.text()).toContain('Balancing 1 tab(s)')
+    it('enables the target slider when enabled', async () => {
+      const wrapper = await mountEnabled()
+      expect(wrapper.find('.target-slider').attributes('disabled')).toBeUndefined()
     })
 
-    it('shows target slider when enabled', async () => {
-      vi.resetModules()
-      setActivePinia(createPinia())
-      const { default: AutoBalanceOn } = await import('@/components/AutoBalance.vue')
-      const wrapper = mount(AutoBalanceOn, {
-        global: { plugins: [i18n] },
-      })
-      const slider = wrapper.find('.target-slider')
-      expect(slider.exists()).toBe(true)
-    })
-
-    it('shows target LUFS value', async () => {
-      vi.resetModules()
-      setActivePinia(createPinia())
-      const { default: AutoBalanceOn } = await import('@/components/AutoBalance.vue')
-      const wrapper = mount(AutoBalanceOn, {
-        global: { plugins: [i18n] },
-      })
+    it('reflects the target LUFS value', async () => {
+      const wrapper = await mountEnabled()
       expect(wrapper.text()).toContain('-20 LUFS')
+    })
+
+    it('drives the fill from the loudest balanced tab short-term', async () => {
+      const wrapper = await mountEnabled()
+      const fill = wrapper.find('.c-fill')
+      // shortTerm -18 → ((-18+60)/60)*100 = 70%. A 0.5px tolerance covers the
+      // CSS px rounding vs. the JS percentage string.
+      expect(fill.attributes('style')).toContain('width: 70%')
     })
   })
 })

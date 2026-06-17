@@ -85,41 +85,42 @@ describe('TabList', () => {
       expect(wrapper.text()).toContain('+0.0 dB')
     })
 
-    it('renders the balance toggle button', async () => {
+    it('renders the whole row as a clickable tab button', async () => {
       const wrapper = await remountWith(mockStore({ tabs: [createMockTab()] }))
-      const btn = wrapper.find('.balance-btn')
-      expect(btn.exists()).toBe(true)
-      expect(btn.text()).toContain('⚖️')
-      // balanceEnabled defaults true → active class + not disabled.
-      expect(btn.classes()).toContain('active')
-      expect(btn.attributes('disabled')).toBeUndefined()
+      const row = wrapper.find('.tab')
+      expect(row.exists()).toBe(true)
+      expect(row.element.tagName).toBe('BUTTON')
+      // balanceEnabled defaults true → no bypass dimming.
+      expect(row.classes()).not.toContain('bypass')
+      // Row is interactive (global switch on).
+      expect(row.attributes('disabled')).toBeUndefined()
     })
 
-    it('calls toggleBalance when the balance button is clicked', async () => {
+    it('calls toggleBalance when the whole row is clicked', async () => {
       const toggleBalance = vi.fn(async () => true)
       const wrapper = await remountWith(mockStore({ tabs: [createMockTab()], toggleBalance }))
-      await wrapper.find('.balance-btn').trigger('click')
+      await wrapper.find('.tab').trigger('click')
       expect(toggleBalance).toHaveBeenCalledWith(1)
     })
 
-    it('marks the balance button inactive and shows BYPASS when balanceEnabled is false', async () => {
+    it('adds the bypass class and shows BYPASS when balanceEnabled is false', async () => {
       const wrapper = await remountWith(
         mockStore({ tabs: [createMockTab({ balanceEnabled: false })] }),
       )
-      const btn = wrapper.find('.balance-btn')
-      expect(btn.classes()).not.toContain('active')
+      const row = wrapper.find('.tab')
+      expect(row.classes()).toContain('bypass')
       // BYPASS badge replaces the dB value.
       expect(wrapper.text()).toContain('BYPASS')
     })
 
-    it('disables the balance button when the global switch is off', async () => {
+    it('disables the row when the global switch is off', async () => {
       const wrapper = await remountWith(
         mockStore({ tabs: [createMockTab()], isAutoBalancing: false }),
       )
-      const btn = wrapper.find('.balance-btn')
-      expect(btn.attributes('disabled')).toBeDefined()
-      // No gain badge when globally disabled.
-      expect(wrapper.text()).not.toContain('+0.0 dB')
+      const row = wrapper.find('.tab')
+      expect(row.attributes('disabled')).toBeDefined()
+      // Dash badge replaces the dB value when globally disabled.
+      expect(wrapper.text()).toContain('—')
     })
 
     it('does not show collecting status when enough samples', async () => {
@@ -141,14 +142,6 @@ describe('TabList', () => {
         mockStore({ tabs: [createMockTab({ appliedGainDb: 5.5 })] }),
       )
       expect(wrapper.text()).toContain('+5.5 dB')
-    })
-
-    it('truncates long titles', async () => {
-      const wrapper = await remountWith(
-        mockStore({ tabs: [createMockTab({ title: 'A'.repeat(50) })] }),
-      )
-      const titleEl = wrapper.find('.tab-title')
-      expect(titleEl.text().length).toBeLessThanOrEqual(28)
     })
   })
 })

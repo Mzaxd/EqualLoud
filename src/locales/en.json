@@ -1,6 +1,9 @@
 {
   "popup": {
     "title": "EqualLoud",
+    "power": "Toggle loudness balancing",
+    "playing": "Now playing",
+    "tabCount": "{count} tab(s)",
     "status": {
       "balancing": "Balancing {count} tab(s)",
       "waiting": "Waiting for audio...",
@@ -9,7 +12,8 @@
   },
   "footer": {
     "brand": "EqualLoud",
-    "author": "github.com/mzaxd/EqualLoud"
+    "author": "github.com/mzaxd/EqualLoud",
+    "source": "Source on GitHub"
   },
   "autobalance": {
     "title": "Target Volume",
@@ -27,6 +31,7 @@
   },
   "limiter": {
     "title": "Output Limiter",
+    "subtitle": "Prevents clipping · on by default",
     "tooltip": {
       "enable": "Enable limiter",
       "disable": "Disable limiter"
@@ -82,7 +87,8 @@
     "balance": {
       "onHint": "Volume balance: ON (click to bypass / A-B)",
       "offHint": "Volume balance: OFF — passthrough (click to re-enable)",
-      "bypass": "BYPASS"
+      "bypass": "BYPASS",
+      "dash": "—"
     },
     "status": {
       "collecting": "Analyzing...",

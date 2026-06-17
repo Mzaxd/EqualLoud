@@ -98,24 +98,30 @@ function formatRatio(x: number): string {
 </script>
 
 <template>
-  <div class="limiter-section">
-    <div class="limiter-header">
-      <div class="limiter-title">
-        <span class="limiter-icon">🛡️</span>
-        <span>{{ t('limiter.title') }}</span>
-        <InfoTip :tip="t('limiter.tooltips.title')" />
-      </div>
-      <button
-        class="limiter-toggle"
-        :class="{ active: isEnabled }"
-        :title="isEnabled ? t('limiter.tooltip.disable') : t('limiter.tooltip.enable')"
-        @click="toggleLimiter"
-      >
-        <span class="toggle-track">
-          <span class="toggle-thumb"></span>
+  <div class="limiter">
+    <!-- Header row: title + master on/off toggle. -->
+    <div class="prot-row">
+      <div class="l">
+        <span class="h">
+          {{ t('limiter.title') }}
+          <InfoTip :tip="t('limiter.tooltips.title')" />
         </span>
-        <span class="toggle-label">{{ isEnabled ? t('limiter.on') : t('limiter.off') }}</span>
-      </button>
+        <span class="s">{{ t('limiter.subtitle') }}</span>
+      </div>
+      <div class="r">
+        <span class="state" :class="{ off: !isEnabled }">{{ isEnabled ? t('limiter.on') : t('limiter.off') }}</span>
+        <button
+          class="mt limiter-toggle"
+          :class="{ on: isEnabled }"
+          type="button"
+          role="switch"
+          :aria-checked="isEnabled"
+          :title="isEnabled ? t('limiter.tooltip.disable') : t('limiter.tooltip.enable')"
+          @click="toggleLimiter"
+        >
+          <span class="mt-thumb"></span>
+        </button>
+      </div>
     </div>
 
     <!-- All five parameters are flattened to one level: no nested fold keeps
@@ -123,144 +129,133 @@ function formatRatio(x: number): string {
          Sensible defaults mean casual users never need to touch them. -->
     <div class="limiter-controls" :class="{ disabled: !isEnabled }">
       <!-- Threshold (Ceiling) -->
-      <div class="control-row">
-        <label class="control-label">
-          <span class="label-text">
-            {{ t('limiter.ceiling') }}
+      <div class="ctrl">
+        <div class="cr">
+          <span class="cl"
+            >{{ t('limiter.ceiling') }}
             <InfoTip :tip="t('limiter.tooltips.threshold')" />
           </span>
-          <span class="control-value">{{ formatThreshold(threshold) }}</span>
-        </label>
-        <div class="slider-container">
-          <span class="slider-label">-6</span>
-          <input
-            type="range"
-            class="param-slider threshold-slider"
-            min="-6"
-            max="-0.1"
-            step="0.1"
-            :value="threshold"
-            :disabled="!isEnabled"
-            @input="handleThresholdChange"
-          />
-          <span class="slider-label">-0.1</span>
+          <span class="cv">{{ formatThreshold(threshold) }}</span>
         </div>
-        <div class="param-hint">{{ thresholdHint }}</div>
+        <input
+          type="range"
+          class="fader threshold-slider"
+          min="-6"
+          max="-0.1"
+          step="0.1"
+          :value="threshold"
+          :disabled="!isEnabled"
+          @input="handleThresholdChange"
+        />
+        <div class="cr"><span></span><span class="hint">{{ thresholdHint }}</span></div>
       </div>
 
       <!-- Ratio -->
-      <div class="control-row">
-        <label class="control-label">
-          <span class="label-text">
-            {{ t('limiter.ratio') }}
+      <div class="ctrl">
+        <div class="cr">
+          <span class="cl"
+            >{{ t('limiter.ratio') }}
             <InfoTip :tip="t('limiter.tooltips.ratio')" />
           </span>
-          <span class="control-value ratio-value">{{ formatRatio(ratio) }}</span>
-        </label>
-        <div class="slider-container">
-          <span class="slider-label">1</span>
-          <input
-            type="range"
-            class="param-slider ratio-slider"
-            min="1"
-            max="20"
-            step="1"
-            :value="ratio"
-            :disabled="!isEnabled"
-            @input="handleRatioChange"
-          />
-          <span class="slider-label">20</span>
+          <span class="cv">{{ formatRatio(ratio) }}</span>
         </div>
-        <div class="param-hint">{{ ratioHint }}</div>
+        <input
+          type="range"
+          class="fader ratio-slider"
+          min="1"
+          max="20"
+          step="1"
+          :value="ratio"
+          :disabled="!isEnabled"
+          @input="handleRatioChange"
+        />
+        <div class="cr"><span></span><span class="hint">{{ ratioHint }}</span></div>
       </div>
 
       <!-- Attack -->
-      <div class="control-row">
-        <label class="control-label">
-          <span class="label-text">
-            {{ t('limiter.attack') }}
+      <div class="ctrl">
+        <div class="cr">
+          <span class="cl"
+            >{{ t('limiter.attack') }}
             <InfoTip :tip="t('limiter.tooltips.attack')" />
           </span>
-          <span class="control-value attack-value">{{ formatAttack(attack) }}</span>
-        </label>
-        <div class="slider-container">
-          <span class="slider-label">0.1</span>
-          <input
-            type="range"
-            class="param-slider attack-slider"
-            min="0.1"
-            max="50"
-            step="0.1"
-            :value="attack"
-            :disabled="!isEnabled"
-            @input="handleAttackChange"
-          />
-          <span class="slider-label">50</span>
+          <span class="cv cool">{{ formatAttack(attack) }}</span>
         </div>
-        <div class="param-hint">
-          <span v-if="attack <= 1">{{ t('limiter.hints.attack.fast') }}</span>
-          <span v-else-if="attack <= 10">{{ t('limiter.hints.attack.balanced') }}</span>
-          <span v-else>{{ t('limiter.hints.attack.slow') }}</span>
+        <input
+          type="range"
+          class="fader attack-slider"
+          min="0.1"
+          max="50"
+          step="0.1"
+          :value="attack"
+          :disabled="!isEnabled"
+          @input="handleAttackChange"
+        />
+        <div class="cr">
+          <span></span>
+          <span class="hint">
+            <span v-if="attack <= 1">{{ t('limiter.hints.attack.fast') }}</span>
+            <span v-else-if="attack <= 10">{{ t('limiter.hints.attack.balanced') }}</span>
+            <span v-else>{{ t('limiter.hints.attack.slow') }}</span>
+          </span>
         </div>
       </div>
 
       <!-- Release -->
-      <div class="control-row">
-        <label class="control-label">
-          <span class="label-text">
-            {{ t('limiter.release') }}
+      <div class="ctrl">
+        <div class="cr">
+          <span class="cl"
+            >{{ t('limiter.release') }}
             <InfoTip :tip="t('limiter.tooltips.release')" />
           </span>
-          <span class="control-value release-value">{{ formatRelease(release) }}</span>
-        </label>
-        <div class="slider-container">
-          <span class="slider-label">10</span>
-          <input
-            type="range"
-            class="param-slider release-slider"
-            min="10"
-            max="500"
-            step="5"
-            :value="release"
-            :disabled="!isEnabled"
-            @input="handleReleaseChange"
-          />
-          <span class="slider-label">500</span>
+          <span class="cv cool">{{ formatRelease(release) }}</span>
         </div>
-        <div class="param-hint">
-          <span v-if="release <= 50">{{ t('limiter.hints.release.fast') }}</span>
-          <span v-else-if="release <= 150">{{ t('limiter.hints.release.balanced') }}</span>
-          <span v-else>{{ t('limiter.hints.release.slow') }}</span>
+        <input
+          type="range"
+          class="fader release-slider"
+          min="10"
+          max="500"
+          step="5"
+          :value="release"
+          :disabled="!isEnabled"
+          @input="handleReleaseChange"
+        />
+        <div class="cr">
+          <span></span>
+          <span class="hint">
+            <span v-if="release <= 50">{{ t('limiter.hints.release.fast') }}</span>
+            <span v-else-if="release <= 150">{{ t('limiter.hints.release.balanced') }}</span>
+            <span v-else>{{ t('limiter.hints.release.slow') }}</span>
+          </span>
         </div>
       </div>
 
       <!-- Knee -->
-      <div class="control-row">
-        <label class="control-label">
-          <span class="label-text">
-            {{ t('limiter.knee') }}
+      <div class="ctrl">
+        <div class="cr">
+          <span class="cl"
+            >{{ t('limiter.knee') }}
             <InfoTip :tip="t('limiter.tooltips.knee')" />
           </span>
-          <span class="control-value knee-value">{{ formatKnee(knee) }}</span>
-        </label>
-        <div class="slider-container">
-          <span class="slider-label">0</span>
-          <input
-            type="range"
-            class="param-slider knee-slider"
-            min="0"
-            max="40"
-            step="1"
-            :value="knee"
-            :disabled="!isEnabled"
-            @input="handleKneeChange"
-          />
-          <span class="slider-label">40</span>
+          <span class="cv cool">{{ formatKnee(knee) }}</span>
         </div>
-        <div class="param-hint">
-          <span v-if="knee <= 1">{{ t('limiter.hints.knee.hard') }}</span>
-          <span v-else-if="knee <= 10">{{ t('limiter.hints.knee.soft') }}</span>
-          <span v-else>{{ t('limiter.hints.knee.verySoft') }}</span>
+        <input
+          type="range"
+          class="fader knee-slider"
+          min="0"
+          max="40"
+          step="1"
+          :value="knee"
+          :disabled="!isEnabled"
+          @input="handleKneeChange"
+        />
+        <div class="cr">
+          <span></span>
+          <span class="hint">
+            <span v-if="knee <= 1">{{ t('limiter.hints.knee.hard') }}</span>
+            <span v-else-if="knee <= 10">{{ t('limiter.hints.knee.soft') }}</span>
+            <span v-else>{{ t('limiter.hints.knee.verySoft') }}</span>
+          </span>
         </div>
       </div>
     </div>
@@ -268,97 +263,96 @@ function formatRatio(x: number): string {
 </template>
 
 <style scoped>
-.limiter-section {
-  background: #fff;
-  border-radius: 12px;
-  padding: 14px;
-  border: 1px solid #e8eaed;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+.limiter {
+  display: flex;
+  flex-direction: column;
 }
 
-.limiter-header {
+/* Header row */
+.prot-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
 }
 
-.limiter-title {
+.prot-row .l {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #333;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.limiter-icon {
-  font-size: 16px;
-}
-
-.label-text {
+.prot-row .l .h {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
 }
 
-.limiter-toggle {
+.prot-row .l .s {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.prot-row .r {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
+  gap: 10px;
 }
 
-.toggle-track {
-  width: 36px;
-  height: 20px;
-  background: #d0d5dd;
-  border-radius: 10px;
+.prot-row .state {
+  font-size: 11.5px;
+  color: var(--ok);
+  font-weight: 500;
+}
+
+.prot-row .state.off {
+  color: var(--faint);
+}
+
+/* Mini toggle */
+.mt {
   position: relative;
-  transition: all 0.2s ease;
+  width: 34px;
+  height: 20px;
+  border-radius: 0;
+  background: var(--bg-deep);
+  border: 1px solid var(--hair);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
 }
 
-.limiter-toggle.active .toggle-track {
-  background: #48bb78;
-}
-
-.toggle-thumb {
+.mt .mt-thumb {
   position: absolute;
-  width: 16px;
-  height: 16px;
-  background: #fff;
-  border-radius: 50%;
   top: 2px;
   left: 2px;
-  transition: all 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  width: 14px;
+  height: 14px;
+  border-radius: 0;
+  background: var(--faint);
+  transition:
+    transform 0.2s,
+    background 0.2s;
 }
 
-.limiter-toggle.active .toggle-thumb {
-  background: #fff;
-  left: 18px;
+.mt.on {
+  background: oklch(30% 0.04 60);
+  border-color: var(--honey-2);
 }
 
-.toggle-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #888;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  min-width: 24px;
+.mt.on .mt-thumb {
+  transform: translateX(14px);
+  background: var(--honey);
 }
 
-.limiter-toggle.active .toggle-label {
-  color: #48bb78;
-}
-
+/* Controls */
 .limiter-controls {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 15px;
+  margin-top: 15px;
   transition: opacity 0.2s ease;
 }
 
@@ -367,97 +361,88 @@ function formatRatio(x: number): string {
   pointer-events: none;
 }
 
-.control-row {
+.ctrl {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
-.control-label {
+.cr {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
+}
+
+.cl {
+  display: inline-flex;
   align-items: center;
+  gap: 4px;
   font-size: 12px;
-  color: #555;
+  color: var(--muted);
 }
 
-.control-value {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-weight: 500;
-  font-size: 11px;
-  color: #48bb78;
+.cv {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--honey);
+  font-variant-numeric: tabular-nums;
 }
 
-.attack-value {
-  color: #48bb78;
+.cv.cool {
+  color: var(--cut);
 }
 
-.release-value {
-  color: #4299e1;
-}
-
-.knee-value {
-  color: #9f7aea;
-}
-
-.slider-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.slider-label {
-  font-size: 9px;
-  color: #aaa;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  width: 28px;
-}
-
-.slider-label:last-child {
+.hint {
+  font-size: 10.5px;
+  color: var(--faint);
   text-align: right;
 }
 
-.param-slider {
-  flex: 1;
+/* Slim fader */
+.fader {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
   height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: #e0e0e0;
-  border-radius: 2px;
+  border-radius: 0;
   outline: none;
+  background: oklch(30% 0.012 52);
   cursor: pointer;
 }
 
-.param-slider::-webkit-slider-thumb {
+.fader::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
-  background: #fff;
-  border: 2px solid #48bb78;
-  border-radius: 50%;
+  width: 6px;
+  height: 18px;
+  border-radius: 0;
+  background: oklch(96% 0.01 72);
+  border: none;
+  border-top: 2px solid var(--honey);
+  border-bottom: 2px solid var(--honey);
+  box-shadow: 0 2px 6px oklch(8% 0.02 50 / 0.5);
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: transform 0.1s ease;
+  transition: transform 0.12s;
 }
 
-.param-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
+.fader::-webkit-slider-thumb:hover {
+  transform: scaleY(1.1);
 }
 
-.param-slider:disabled {
-  opacity: 0.5;
+.fader::-moz-range-thumb {
+  width: 6px;
+  height: 18px;
+  border-radius: 0;
+  background: oklch(96% 0.01 72);
+  border: none;
+  border-top: 2px solid var(--honey);
+  border-bottom: 2px solid var(--honey);
+  cursor: pointer;
+}
+
+.fader:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
-}
-
-.param-slider:disabled::-webkit-slider-thumb {
-  cursor: not-allowed;
-}
-
-.param-hint {
-  font-size: 9px;
-  color: #bbb;
-  text-align: center;
-  font-style: italic;
 }
 </style>

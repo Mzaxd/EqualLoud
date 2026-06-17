@@ -54,10 +54,11 @@ function dismiss(): void {
   align-items: flex-start;
   gap: 8px;
   padding: 10px 12px;
-  background: #fef3c7;
-  border: 1px solid #f59e0b;
-  border-radius: 8px;
-  color: #92400e;
+  margin-bottom: 6px;
+  background: var(--surface);
+  border: 1px solid var(--honey-2);
+  border-radius: 0;
+  color: var(--fg);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -77,17 +78,18 @@ function dismiss(): void {
   background: none;
   border: none;
   cursor: pointer;
-  color: #92400e;
+  color: var(--muted);
   font-size: 14px;
   line-height: 1;
   padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: 0;
   opacity: 0.7;
   transition: all 0.15s ease;
 }
 
 .notice-dismiss:hover {
   opacity: 1;
-  background: rgba(146, 64, 14, 0.1);
+  background: var(--honey-soft);
+  color: var(--honey);
 }
 </style>

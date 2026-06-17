@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import AutoBalance from '@/components/AutoBalance.vue'
 import Limiter from '@/components/Limiter.vue'
+import PowerToggle from '@/components/PowerToggle.vue'
 import TabList from '@/components/TabList.vue'
 import UpdateNotice from '@/components/UpdateNotice.vue'
 import { useSettingsStore } from '@/stores/settings'
@@ -14,33 +15,36 @@ const version = __APP_VERSION__
 const tabsStore = useTabsStore()
 const { t, locale } = useI18n()
 const settings = useSettingsStore()
-const languages = [
-  { code: 'en', name: 'English' },
-  { code: 'zh_CN', name: '简体中文' },
-]
 
+// The footer 「中 / EN」 button is a single two-state toggle (the prototype's
+// behaviour), not a dropdown: each click flips between the two supported
+// locales. The bilingual label reads naturally in either active locale.
 const showSettings = ref(false)
 
 function toggleSettings(): void {
   showSettings.value = !showSettings.value
 }
 
+/** Label shown on the language button: the locale you'll switch *to*. */
+const langLabel = ref<'中 / EN' | '中 / EN'>('中 / EN')
+function refreshLangLabel(): void {
+  // Always render the same bilingual affordance — it reads naturally in either
+  // active locale and signals "this toggles Chinese / English".
+  langLabel.value = '中 / EN'
+}
+
+function toggleLocale(): void {
+  locale.value = locale.value === 'zh_CN' ? 'en' : 'zh_CN'
+}
+
 onMounted(() => {
   tabsStore.startPolling()
 
-  const currentLocale = locale.value
-  if (currentLocale) {
-    const language = languages.find((l) => l.code === currentLocale)
-    if (language) {
-      locale.value = language.code
-    } else {
-      locale.value = 'en'
-    }
-  }
-
-  if (settings.locale && settings.locale !== locale.value) {
+  // Hydrate from the persisted popup locale (set by the user on a previous open).
+  if (settings.locale) {
     locale.value = settings.locale
   }
+  refreshLangLabel()
 })
 
 watch(
@@ -57,239 +61,301 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app">
-    <!-- Header -->
-    <header class="app-header">
-      <h1 class="app-title">{{ t('popup.title') }}</h1>
-      <div class="header-right">
-        <select v-model="locale" class="lang-select">
-          <option v-for="l in languages" :key="l.code" :value="l.code">{{ l.name }}</option>
-        </select>
-        <span class="version">v{{ version }}</span>
-      </div>
+  <div class="popup">
+    <!-- Header: wordmark + circular standby power button (the master on/off). -->
+    <header class="top">
+      <span class="name">Equal<b>Loud</b></span>
+      <PowerToggle />
     </header>
 
-    <!-- Main Content -->
-    <main class="app-content">
-      <!-- Update recovery notice (auto-hides once dismissed for this version) -->
+    <div class="body">
+      <!-- Update recovery notice — sits above the target meter, only shows when
+           the extension version changed since the last dismissal. -->
       <UpdateNotice />
 
-      <!-- Auto Balance Toggle + Status -->
+      <!-- Target volume + the combined loudness meter. -->
       <AutoBalance />
 
-      <!-- Tab List -->
-      <section class="tabs-section">
-        <TabList />
-      </section>
+      <!-- Now-playing tab list (whole-row click = A/B). -->
+      <div class="tabs-head">
+        <span class="lab">{{ t('popup.playing') }}</span>
+        <span class="n">{{ t('popup.tabCount', { count: tabsStore.tabs.length }) }}</span>
+      </div>
+      <TabList />
 
-      <!-- Settings Toggle -->
-      <button class="settings-toggle" @click="toggleSettings">
-        <span>⚙️</span>
-        <span>{{ showSettings ? t('settings.collapse') : t('settings.expand') }}</span>
-      </button>
-
-      <!-- Settings Panel (expandable) -->
-      <Transition name="settings-panel">
-        <div v-if="showSettings" class="settings-panel">
-          <Limiter />
+      <!-- Collapsible settings panel (limiter), default hidden. Opens via the
+           footer gear. Animates via grid-template-rows 0fr→1fr, which the
+           compositor interpolates WITHOUT a layout reflow per frame (unlike
+           max-height, which re-layouts the whole body every frame and was the
+           source of the jank on open/close). The .settings-inner wrapper is
+           overflow:hidden + min-height:0 so the 0fr track collapses to truly
+           zero; the divider/spacing sit on the .panel-pad child so they don't
+           fight the collapsed track height. -->
+      <div class="settings" :class="{ open: showSettings }">
+        <div class="settings-inner">
+          <div class="panel-pad">
+            <Limiter />
+          </div>
         </div>
-      </Transition>
-    </main>
+      </div>
+    </div>
 
-    <!-- Footer -->
-    <footer class="app-footer">
-      <span>{{ t('footer.brand') }}</span>
-      <span class="separator">•</span>
-      <a href="https://github.com/mzaxd/EqualLoud" target="_blank" rel="noopener noreferrer">{{
-        t('footer.author')
-      }}</a>
+    <!-- Footer: privacy/version/GitHub on the left, language + gear on the right. -->
+    <footer class="foot">
+      <span class="pri"
+        >EqualLoud · v{{ version }} ·
+        <a
+          class="gh"
+          href="https://github.com/mzaxd/EqualLoud"
+          target="_blank"
+          rel="noopener noreferrer"
+          :aria-label="t('footer.source')"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"
+            ><path
+              d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.8 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 4.6 18 4.9 18 4.9c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.5-2.7 5.5-5.3 5.8.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"
+            /></svg>
+          </a>
+      </span>
+      <div class="actions">
+        <button class="ghost" type="button" @click="toggleLocale">{{ langLabel }}</button>
+        <button
+          class="icon-btn"
+          :class="{ active: showSettings }"
+          type="button"
+          :aria-label="t('settings.expand')"
+          :title="showSettings ? t('settings.collapse') : t('settings.expand')"
+          @click="toggleSettings"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+            ><circle cx="12" cy="12" r="3"></circle><path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+            ></path></svg>
+        </button>
+      </div>
     </footer>
   </div>
 </template>
 
 <style>
-/* Global Styles */
+/* ── Global ──────────────────────────────────────────────────────────────
+ * Chrome renders the popup as a plain rectangle sized to <body>. There is no
+ * way to round the *window* itself, so the outermost surface must fill that
+ * rectangle edge-to-edge — no margin, no flex-centering, no card with rounded
+ * corners floating on a darker backdrop (that produced the "rectangle around a
+ * rounded card" mismatch the user flagged). The whole popup is square-cornered;
+ * internal elements are square-cornered too, for a consistent hard-edged look.
+ */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color: #1a1a2e;
-}
-
-/* Popup dimensions */
 html,
 body,
 #app {
-  width: 320px;
-  min-height: 400px;
-  max-height: 600px;
+  width: 348px;
+}
+
+body {
+  font-family: var(--font-ui);
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 </style>
 
 <style scoped>
-.app {
-  display: flex;
-  flex-direction: column;
-  min-height: 400px;
-  max-height: 600px;
-  background: #f7f8fa;
+.popup {
+  width: 348px;
+  background: linear-gradient(180deg, oklch(23% 0.015 52), var(--bg));
   overflow: hidden;
 }
 
 /* Header */
-.app-header {
+.top {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  border-bottom: 1px solid #e8eaed;
+  padding: 20px 22px 16px;
 }
 
-.app-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #1a1a2e;
+.name {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.name b {
+  color: var(--honey);
+  font-weight: 600;
+  font-style: italic;
 }
 
-.lang-select {
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  color: #555;
-  font-size: 11px;
-  padding: 3px 6px;
-  cursor: pointer;
-  outline: none;
-}
-
-.lang-select:focus {
-  border-color: #4299e1;
-}
-
-.version {
-  font-size: 10px;
-  color: #999;
-}
-
-/* Main Content */
-.app-content {
-  flex: 1;
+/* Body */
+.body {
+  padding: 6px 22px 18px;
   /* overflow-x: clip is the GLOBAL guard against horizontal scrollbars: any
      descendant that spills past the popup's right edge (e.g. an absolutely-
      positioned tooltip bubble) is clipped invisibly instead of inflating
-     scrollWidth and surfacing a horizontal scrollbar. overflow-y stays auto so
-     the popup still scrolls vertically. Modern Chromium (the only target —
-     this is an MV3 extension popup) computes this to hidden-on-x but the
-     observable effect is identical: no horizontal scroll UI. */
+     scrollWidth and surfacing a horizontal scrollbar. Carried over from the
+     pre-theme .app-content block so the InfoTip overflow fix still holds under
+     the new structure. */
   overflow-x: clip;
-  overflow-y: auto;
-  padding: 12px 16px;
+}
+
+.tabs-head {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: baseline;
+  gap: 8px;
+  margin: 28px 0 4px;
 }
 
-/* Tabs Section */
-.tabs-section {
-  flex: 1;
+.tabs-head .lab {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
 }
 
-/* Settings Toggle */
-.settings-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: #888;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
+.tabs-head .n {
+  font-size: 12.5px;
+  color: var(--muted);
 }
 
-.settings-toggle:hover {
-  background: #eef0f2;
-  color: #555;
+/* Collapsible settings — animates grid-template-rows 0fr→1fr. The grid track
+ * height is interpolated by the compositor (no per-frame layout reflow, unlike
+ * max-height), and 1fr sizes to the content automatically so there's no
+ * overshoot guess. For 0fr to actually collapse to zero the grid item needs
+ * min-height:0 + overflow:hidden, and its own margins/borders must NOT sit on
+ * the item itself (they'd push past the 0fr track) — spacing lives on an inner
+ * wrapper instead. */
+.settings {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.26s ease;
 }
 
-/* Settings Panel */
-.settings-panel {
-  padding-top: 4px;
+.settings.open {
+  grid-template-rows: 1fr;
 }
 
-.settings-panel-enter-active,
-.settings-panel-leave-active {
-  transition: all 0.25s ease;
+.settings-inner {
+  min-height: 0;
   overflow: hidden;
 }
 
-.settings-panel-enter-from,
-.settings-panel-leave-to {
-  opacity: 0;
-  max-height: 0;
-}
-
-.settings-panel-enter-to,
-.settings-panel-leave-from {
-  opacity: 1;
-  max-height: 600px;
+/* Divider + top spacing between the panel and the tab list above. On a child
+ * of the clipped grid item so it's hidden at 0fr and revealed at 1fr, never
+ * fighting the track height. */
+.panel-pad {
+  padding-top: 18px;
+  margin-top: 20px;
+  border-top: 1px solid var(--hair);
 }
 
 /* Footer */
-.app-footer {
+.foot {
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: space-between;
+  padding: 13px 18px;
+  border-top: 1px solid var(--hair);
   gap: 8px;
-  padding: 10px 16px;
-  border-top: 1px solid #e8eaed;
-  font-size: 10px;
-  color: #bbb;
 }
 
-.separator {
-  opacity: 0.5;
+.pri {
+  font-size: 10.5px;
+  color: var(--faint);
 }
 
-.app-footer a {
-  color: #999;
+.pri a {
+  color: var(--muted);
   text-decoration: none;
+  transition: color 0.15s;
 }
 
-.app-footer a:hover {
-  color: #4299e1;
+.pri a:hover {
+  color: var(--honey);
 }
 
-/* Scrollbar */
-.app-content::-webkit-scrollbar {
-  width: 4px;
+.pri a.gh {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
 }
 
-.app-content::-webkit-scrollbar-track {
-  background: transparent;
+.actions {
+  display: flex;
+  gap: 7px;
 }
 
-.app-content::-webkit-scrollbar-thumb {
-  background: #d0d5dd;
-  border-radius: 2px;
+.ghost {
+  font: 500 11.5px / 1 var(--font-ui);
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--hair);
+  padding: 7px 12px;
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    color 0.18s,
+    border-color 0.18s,
+    background 0.18s;
+  white-space: nowrap;
+}
+
+.ghost:hover {
+  color: var(--fg);
+  border-color: var(--honey-2);
+}
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--hair);
+  transition:
+    color 0.18s,
+    border-color 0.18s,
+    background 0.18s,
+    transform 0.12s;
+}
+
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.icon-btn:hover {
+  color: var(--fg);
+  border-color: var(--honey-2);
+}
+
+.icon-btn:active {
+  transform: scale(0.94);
+}
+
+.icon-btn.active {
+  color: var(--honey);
+  border-color: var(--honey-2);
+  background: var(--honey-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 </style>

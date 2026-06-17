@@ -4,6 +4,14 @@ import { useI18n } from 'vue-i18n'
 
 import { useTabsStore, hasEnoughSamples } from '@/stores/tabs'
 
+/**
+ * The "Now playing" list. Each row is a single button — clicking the whole row
+ * toggles that tab's balance (A/B) — no separate ⚖️ affordance. Layout: favicon
+ * → title (ellipsis) → live gain readout. A row dims when bypassed; the gain
+ * badge swaps to a 「BYPASS」 word, or 「—」 when balancing is globally off.
+ */
+defineOptions({ name: 'TabList' })
+
 const tabsStore = useTabsStore()
 const { t } = useI18n()
 
@@ -12,11 +20,11 @@ function formatGain(gainDb: number): string {
   return `${prefix}${gainDb.toFixed(1)} dB`
 }
 
-function getGainColor(gainDb: number): string {
-  const abs = Math.abs(gainDb)
-  if (abs < 3) return '#48bb78'
-  if (abs < 10) return '#ed8936'
-  return '#f56565'
+/** Tailwind-style class for the gain badge: big boost → bright honey, normal
+ *  boost → honey, cut (attenuation) → cool blue. */
+function gainClass(gainDb: number): string {
+  if (gainDb >= 0) return Math.abs(gainDb) >= 10 ? 'gain big' : 'gain'
+  return 'gain cut'
 }
 
 function getFaviconUrl(url: string): string {
@@ -28,9 +36,15 @@ function getFaviconUrl(url: string): string {
   }
 }
 
-function truncateTitle(title: string, maxLength = 28): string {
-  if (title.length <= maxLength) return title
-  return title.substring(0, maxLength - 3) + '...'
+/** First character of the hostname, used as the favicon fallback glyph. */
+function fallbackGlyph(url: string, title: string): string {
+  try {
+    const host = new URL(url).hostname
+    const lead = host.replace(/^www\./, '')[0]
+    return (lead || title[0] || '?').toUpperCase()
+  } catch {
+    return (title[0] || '?').toUpperCase()
+  }
 }
 
 async function handleToggleBalance(tabId: number): Promise<void> {
@@ -38,55 +52,56 @@ async function handleToggleBalance(tabId: number): Promise<void> {
 }
 
 const tabs = computed(() => tabsStore.tabs)
-// Per-tab balance toggle is meaningless when the global switch is off, so we
-// disable + dim the buttons in that state.
+// Per-tab balance toggle is meaningless when the global switch is off, so the
+// rows disable + dim in that state.
 const globalEnabled = computed(() => tabsStore.isAutoBalancing)
 </script>
 
 <template>
   <div class="tab-list">
     <div v-if="tabs.length === 0" class="empty-state">
-      <div class="empty-icon">🎵</div>
       <p class="empty-title">{{ t('tabs.empty.title') }}</p>
       <p class="empty-hint">{{ t('tabs.empty.hint') }}</p>
     </div>
 
-    <TransitionGroup name="tab-item" tag="div" class="tabs-container">
-      <div
-        v-for="tab in tabs"
-        :key="tab.tabId"
-        class="tab-item"
-        :class="{ 'is-bypass': !tab.balanceEnabled }"
-      >
-        <div class="tab-row">
-          <img
-            v-if="tab.url"
-            :src="getFaviconUrl(tab.url)"
-            alt=""
-            class="tab-favicon"
-            @error="($event.target as HTMLImageElement).style.display = 'none'"
-          />
-          <span class="tab-title" :title="tab.title">{{ truncateTitle(tab.title) }}</span>
-          <span
-            v-if="globalEnabled && tab.balanceEnabled"
-            class="tab-gain"
-            :style="{ color: getGainColor(tab.appliedGainDb) }"
-          >
+    <TransitionGroup name="tab-item" tag="div" class="tab-list-rows">
+      <div v-for="tab in tabs" :key="tab.tabId" class="tab-item">
+        <button
+          type="button"
+          class="tab"
+          :class="{ bypass: globalEnabled && !tab.balanceEnabled }"
+          :disabled="!globalEnabled"
+          :title="
+            globalEnabled
+              ? tab.balanceEnabled
+                ? t('tabs.balance.onHint')
+                : t('tabs.balance.offHint')
+              : t('popup.status.disabled')
+          "
+          @click="handleToggleBalance(tab.tabId)"
+        >
+          <span class="fav">
+            <img
+              v-if="tab.url"
+              :src="getFaviconUrl(tab.url)"
+              alt=""
+              @error="($event.target as HTMLImageElement).style.display = 'none'"
+            />
+            <span v-else class="g">{{ fallbackGlyph(tab.url, tab.title) }}</span>
+          </span>
+          <span class="ttitle">{{ tab.title }}</span>
+
+          <span v-if="globalEnabled && tab.balanceEnabled" :class="gainClass(tab.appliedGainDb)">
             {{ formatGain(tab.appliedGainDb) }}
           </span>
-          <span v-else-if="globalEnabled && !tab.balanceEnabled" class="tab-gain bypass">
-            {{ t('tabs.balance.bypass') }}
-          </span>
-          <button
-            class="icon-btn balance-btn"
-            :class="{ active: tab.balanceEnabled, disabled: !globalEnabled }"
-            :disabled="!globalEnabled"
-            :title="tab.balanceEnabled ? t('tabs.balance.onHint') : t('tabs.balance.offHint')"
-            @click="handleToggleBalance(tab.tabId)"
-          >
-            ⚖️
-          </button>
-        </div>
+          <span v-else-if="globalEnabled && !tab.balanceEnabled" class="gain muted">{{
+            t('tabs.balance.bypass')
+          }}</span>
+          <span v-else class="gain muted">{{ t('tabs.balance.dash') }}</span>
+        </button>
+
+        <!-- "Analyzing…" sub-row while the worklet gathers enough blocks for a
+             reliable LUFS reading; hides once we have enough samples. -->
         <div
           v-if="
             tab.isCapturing &&
@@ -106,165 +121,149 @@ const globalEnabled = computed(() => tabsStore.isAutoBalancing)
 .tab-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-/* Empty State */
+/* Empty state — no icon, just calm serif text. */
 .empty-state {
   text-align: center;
-  padding: 32px 16px;
-}
-
-.empty-icon {
-  font-size: 32px;
-  margin-bottom: 10px;
-  opacity: 0.4;
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
+  padding: 28px 16px;
 }
 
 .empty-title {
+  font-family: var(--font-serif);
   font-size: 14px;
   font-weight: 500;
-  color: #555;
+  color: var(--muted);
   margin-bottom: 4px;
 }
 
 .empty-hint {
   font-size: 12px;
-  color: #aaa;
+  color: var(--faint);
 }
 
-/* Tab Items */
-.tabs-container {
+.tab-list-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
 .tab-item {
-  background: #fff;
-  border-radius: 10px;
-  padding: 10px 12px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  border: 2px solid transparent;
+  display: flex;
+  flex-direction: column;
 }
 
-.tab-item.is-bypass {
-  opacity: 0.7;
-}
-
-.tab-row {
+/* Whole-row button: clicking anywhere toggles this tab's balance. */
+.tab {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 11px;
+  width: 100%;
+  padding: 11px 6px;
+  margin: 0 -6px;
+  border-radius: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  transition:
+    background 0.16s,
+    opacity 0.2s;
 }
 
-.tab-favicon {
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
+.tab:hover {
+  background: oklch(26% 0.014 52);
+}
+
+.tab:disabled {
+  cursor: not-allowed;
+}
+
+.tab.bypass {
+  opacity: 0.42;
+}
+
+.fav {
+  width: 20px;
+  height: 20px;
+  border-radius: 0;
   flex-shrink: 0;
+  overflow: hidden;
+  background: var(--surface);
+  display: grid;
+  place-items: center;
 }
 
-.tab-title {
+.fav img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fav .g {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  font: 700 9px / 1 var(--font-mono);
+  color: oklch(16% 0.02 52);
+}
+
+.ttitle {
   flex: 1;
   font-size: 13px;
   font-weight: 500;
-  color: #333;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
-.tab-gain {
-  font-size: 12px;
-  font-weight: 600;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.tab-gain.bypass {
-  color: #999;
-  font-size: 10px;
+.gain {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.icon-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--honey);
   flex-shrink: 0;
-  transition: background 0.15s ease;
 }
 
-.icon-btn:hover {
-  background: #f0f0f0;
+.gain.cut {
+  color: var(--cut);
 }
 
-/* Balance toggle: active = balancing applied (green highlight); inactive =
-   bypassed (greyed). Disabled when the global switch is off. */
-.balance-btn:not(.active) {
-  filter: grayscale(1);
-  opacity: 0.35;
+.gain.big {
+  color: var(--honey);
 }
 
-.balance-btn.active {
-  background: #ebf4ff;
+.gain.muted {
+  color: var(--faint);
+  font-weight: 500;
+  font-size: 11.5px;
+  font-family: var(--font-ui);
 }
 
-.balance-btn.disabled,
-.balance-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.3;
-  filter: grayscale(1);
-}
-
-.balance-btn.disabled:hover {
-  background: transparent;
-}
-
-/* Tab Status */
+/* Collecting sub-row */
 .tab-status {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
+  padding: 2px 6px 8px;
+  margin: 0 -6px;
   font-size: 10px;
-  color: #aaa;
+  color: var(--muted);
 }
 
 .tab-status.collecting {
-  color: #ed8936;
+  color: var(--honey-2);
 }
 
 .status-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
-  background: #ddd;
-}
-
-.tab-status.collecting .status-dot {
-  background: #ed8936;
+  border-radius: 0;
+  background: var(--honey-2);
   animation: pulse 1.5s infinite;
 }
 
@@ -278,7 +277,7 @@ const globalEnabled = computed(() => tabsStore.isAutoBalancing)
   }
 }
 
-/* Transitions */
+/* Row transitions */
 .tab-item-enter-active,
 .tab-item-leave-active {
   transition: all 0.25s ease;
@@ -296,5 +295,11 @@ const globalEnabled = computed(() => tabsStore.isAutoBalancing)
 
 .tab-item-move {
   transition: transform 0.25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot {
+    animation: none;
+  }
 }
 </style>
