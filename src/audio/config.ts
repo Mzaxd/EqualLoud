@@ -92,7 +92,7 @@ export const DEFAULT_LIMITER_SETTINGS = {
   enabled: true,
   thresholdDb: -2,
   kneeDb: 0,
-  ratio: 30,
+  ratio: 20,
   attackMs: 0.7,
   releaseMs: 150,
 } as const

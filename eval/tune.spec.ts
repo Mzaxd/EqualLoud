@@ -38,9 +38,15 @@ describe('tuner — correctness', () => {
       BALANCE_GRID.minGainDb.length *
       BALANCE_GRID.attackTc.length *
       BALANCE_GRID.releaseTc.length
-    expect(expandBalanceGrid(BALANCE_GRID, {
-      thresholdDb: -1, ratio: 20, attackMs: 1, releaseMs: 100, kneeDb: 0,
-    })).toHaveLength(n)
+    expect(
+      expandBalanceGrid(BALANCE_GRID, {
+        thresholdDb: -1,
+        ratio: 20,
+        attackMs: 1,
+        releaseMs: 100,
+        kneeDb: 0,
+      }),
+    ).toHaveLength(n)
   })
 
   it('expandLimiterGrid produces the expected number of candidates', () => {
@@ -49,9 +55,14 @@ describe('tuner — correctness', () => {
       LIMITER_GRID.ratio.length *
       LIMITER_GRID.attackMs.length *
       LIMITER_GRID.releaseMs.length
-    expect(expandLimiterGrid(LIMITER_GRID, {
-      minBlocks: 1, minGainDb: -60, attackTc: 0.02, releaseTc: 0.05,
-    })).toHaveLength(n)
+    expect(
+      expandLimiterGrid(LIMITER_GRID, {
+        minBlocks: 1,
+        minGainDb: -60,
+        attackTc: 0.02,
+        releaseTc: 0.05,
+      }),
+    ).toHaveLength(n)
   })
 
   it('every candidate is scored with a finite, non-negative cost', () => {
@@ -141,9 +152,7 @@ function printCandidateRow(
 ): void {
   const delta = c.totalCost - baselineCost
   const deltaStr = delta <= -0.01 ? `${fmt(delta)}` : delta >= 0.01 ? `+${fmt(delta)}` : '  0  '
-  const perScn = c.perScenario
-    .map((p) => fmt(p.cost, 1).padStart(5))
-    .join('  ')
+  const perScn = c.perScenario.map((p) => fmt(p.cost, 1).padStart(5)).join('  ')
   console.log(
     `    ${String(rank).padStart(4)}  ${fmt(c.totalCost).padStart(6)}  ${deltaStr.padStart(6)}  ` +
       `${String(c.params.minBlocks).padStart(5)}  ${fmt(c.params.attackTc, 3).padStart(6)}  ` +
@@ -184,9 +193,7 @@ function printReport(result: TwoStageResultLike): void {
 
   // --- stage 1 ---
   console.log('  ▼ STAGE 1 — balance-loop sweep (top 5)')
-  console.log(
-    '         cost     Δ     blk   attack  release | scenarios',
-  )
+  console.log('         cost     Δ     blk   attack  release | scenarios')
   for (let i = 0; i < Math.min(5, result.stage1.length); i++) {
     const c = result.stage1[i]!
     const delta = c.totalCost - baseline.totalCost
@@ -202,9 +209,7 @@ function printReport(result: TwoStageResultLike): void {
 
   // --- stage 2 ---
   console.log('  ▼ STAGE 2 — limiter sweep (top 5), balance fixed at Stage-1 winner')
-  console.log(
-    '         cost     Δ     thr  ratio  lAtk   lRel | scenarios',
-  )
+  console.log('         cost     Δ     thr  ratio  lAtk   lRel | scenarios')
   for (let i = 0; i < Math.min(5, result.stage2.length); i++) {
     const c = result.stage2[i]!
     const delta = c.totalCost - baseline.totalCost
@@ -240,7 +245,9 @@ function printReport(result: TwoStageResultLike): void {
     if (improved) {
       const pct = ((baseline.totalCost - best.totalCost) / baseline.totalCost) * 100
       console.log(`  ✦ RECOMMENDATION: adopt best candidate (${fmt(pct, 1)}% cost improvement).`)
-      console.log('    Review the parameter changes above, then apply to config.ts after A/B listening test.')
+      console.log(
+        '    Review the parameter changes above, then apply to config.ts after A/B listening test.',
+      )
     } else {
       console.log('  ✓ Production defaults are within 0.5 of optimal — no change recommended.')
     }

@@ -71,9 +71,9 @@ import {
   DEFAULT_BALANCE_PARAMS,
   type GainDecision,
 } from '../src/audio/balance'
+import { DEFAULT_LIMITER_SETTINGS } from '../src/audio/config'
 import { LufsCalculator, dbToGain } from '../src/audio/lufs'
 import type { LimiterSettings } from '../src/messages/protocol'
-import { DEFAULT_LIMITER_SETTINGS } from '../src/audio/config'
 
 // ---------------------------------------------------------------------------
 // Tuning — mirror src/audio/{config,lufs,worklet}.ts defaults exactly.
@@ -182,7 +182,13 @@ export interface LimiterTickStats {
 
 /** Convert a LimiterSettings (production type) into the tuner's LimiterParams. */
 export function limiterSettingsToParams(s: LimiterSettings): LimiterParams {
-  return { thresholdDb: s.thresholdDb, ratio: s.ratio, attackMs: s.attackMs, releaseMs: s.releaseMs, kneeDb: s.kneeDb }
+  return {
+    thresholdDb: s.thresholdDb,
+    ratio: s.ratio,
+    attackMs: s.attackMs,
+    releaseMs: s.releaseMs,
+    kneeDb: s.kneeDb,
+  }
 }
 
 /**
@@ -238,7 +244,7 @@ export class LimiterModel {
     }
     // Inside the soft-knee region: W3C quadratic interpolation.
     const x = levelDb - t + halfKnee // 0 at knee start, knee at knee end
-    return (x * x) / (2 * knee) * (1 - 1 / r)
+    return ((x * x) / (2 * knee)) * (1 - 1 / r)
   }
 
   /**

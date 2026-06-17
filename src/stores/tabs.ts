@@ -37,7 +37,7 @@ export const useTabsStore = defineStore('tabs', () => {
     enabled: true,
     thresholdDb: -2,
     kneeDb: 0,
-    ratio: 30,
+    ratio: 20,
     attackMs: 0.7,
     releaseMs: 150,
   })

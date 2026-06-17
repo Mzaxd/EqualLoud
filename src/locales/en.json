@@ -41,7 +41,7 @@
     "tooltips": {
       "title": "A safety valve at the end of each tab's audio chain. Prevents harsh clipping distortion when boosted audio would exceed 0 dBFS.",
       "threshold": "The level above which the limiter kicks in. Everything quieter passes through untouched.",
-      "ratio": "How hard the limiter pushes back once the threshold is crossed. 20:1 means 20 dB over becomes 1 dB out. ∞:1 is a brick wall.",
+      "ratio": "How hard the limiter pushes back once the threshold is crossed. 20:1 means 20 dB over becomes 1 dB out — the maximum, effectively a brick wall.",
       "attack": "How fast the limiter reacts to spikes. Fast = catches transients (drums, pops); slow = more natural but lets some peaks through.",
       "release": "How fast the limiter lets go after the peak passes. Fast = punchy but may pump; slow = smoother but recovers later.",
       "knee": "The transition sharpness around the threshold. Hard = sudden compression (precise); soft = gradual (less audible)."

@@ -305,7 +305,13 @@ export function transientBurst(args: {
   // Two independent pink-noise beds for L/R, seeded for reproducibility.
   for (let ch = 0; ch < 2; ch++) {
     const rand = mulberry32(seed + ch * 0x9e3779b9)
-    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0
+    let b0 = 0,
+      b1 = 0,
+      b2 = 0,
+      b3 = 0,
+      b4 = 0,
+      b5 = 0,
+      b6 = 0
     let nextTransient = intervalSamples // first transient after one interval
     for (let i = 0; i < n; i++) {
       const white = rand() * 2 - 1

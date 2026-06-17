@@ -49,11 +49,6 @@
 
 import { scoreScenarioSuite, type ScenarioScore, DEFAULT_COST_WEIGHTS } from './cost'
 import {
-  runBalanceSim,
-  type BalanceSimParams,
-  DEFAULT_LIMITER,
-} from './simulate'
-import {
   pinkNoise,
   pinkNoiseScenario,
   pinkAmpDbFor,
@@ -63,6 +58,7 @@ import {
   voiceBandNoise,
   type StereoSignal,
 } from './signals'
+import { runBalanceSim, type BalanceSimParams, DEFAULT_LIMITER } from './simulate'
 
 const SR = 48000
 const TARGET = -14
@@ -98,7 +94,12 @@ export interface TuneScenario {
 }
 
 /** Static pink-noise signal builder for a tab that measures a given LUFS. */
-function tabAt(id: number, lufs: number, durationSec: number, seed: number): {
+function tabAt(
+  id: number,
+  lufs: number,
+  durationSec: number,
+  seed: number,
+): {
   id: number
   signal: StereoSignal
 } {
@@ -148,11 +149,15 @@ export function buildTuneSuite(): TuneScenario[] {
       tabs: [
         {
           id: 1,
-          signal: pinkNoiseScenario(SR, [
-            { amplitudeDb: pinkAmpDbFor(-20), durationSec: 4 },
-            { amplitudeDb: pinkAmpDbFor(-6), durationSec: 5 },
-            { amplitudeDb: pinkAmpDbFor(-20), durationSec: 9 },
-          ], 100),
+          signal: pinkNoiseScenario(
+            SR,
+            [
+              { amplitudeDb: pinkAmpDbFor(-20), durationSec: 4 },
+              { amplitudeDb: pinkAmpDbFor(-6), durationSec: 5 },
+              { amplitudeDb: pinkAmpDbFor(-20), durationSec: 9 },
+            ],
+            100,
+          ),
         },
       ],
     },
@@ -165,10 +170,22 @@ export function buildTuneSuite(): TuneScenario[] {
           id: 1,
           signal: concatStereo(
             concatStereo(
-              pinkNoise({ sampleRate: SR, durationSec: 5, amplitudeDb: pinkAmpDbFor(-20), seed: 200, channels: 2 }),
+              pinkNoise({
+                sampleRate: SR,
+                durationSec: 5,
+                amplitudeDb: pinkAmpDbFor(-20),
+                seed: 200,
+                channels: 2,
+              }),
               silence(SR, 2),
             ),
-            pinkNoise({ sampleRate: SR, durationSec: 7, amplitudeDb: pinkAmpDbFor(-20), seed: 201, channels: 2 }),
+            pinkNoise({
+              sampleRate: SR,
+              durationSec: 7,
+              amplitudeDb: pinkAmpDbFor(-20),
+              seed: 201,
+              channels: 2,
+            }),
           ),
         },
       ],
@@ -180,10 +197,14 @@ export function buildTuneSuite(): TuneScenario[] {
       tabs: [
         {
           id: 1,
-          signal: pinkNoiseScenario(SR, [
-            { amplitudeDb: pinkAmpDbFor(-20), durationSec: 6 },
-            { amplitudeDb: pinkAmpDbFor(-10), durationSec: 9 },
-          ], 300),
+          signal: pinkNoiseScenario(
+            SR,
+            [
+              { amplitudeDb: pinkAmpDbFor(-20), durationSec: 6 },
+              { amplitudeDb: pinkAmpDbFor(-10), durationSec: 9 },
+            ],
+            300,
+          ),
         },
       ],
     },
@@ -307,13 +328,18 @@ export const BALANCE_GRID = {
  */
 export const LIMITER_GRID = {
   thresholdDb: [-3, -1, -0.5],
-  ratio: [4, 12, 20, 40],
+  ratio: [4, 12, 20],
   attackMs: [0.5, 1, 3, 10],
   releaseMs: [50, 100, 200],
 }
 
 /** Expand the balance grid into full candidate params, limiter held at defaults. */
-export function expandBalanceGrid(grid: typeof BALANCE_GRID, limiter: BalanceSimParams['thresholdDb'] extends never ? never : Omit<BalanceSimParams, 'minBlocks' | 'minGainDb' | 'attackTc' | 'releaseTc'>): BalanceSimParams[] {
+export function expandBalanceGrid(
+  grid: typeof BALANCE_GRID,
+  limiter: BalanceSimParams['thresholdDb'] extends never
+    ? never
+    : Omit<BalanceSimParams, 'minBlocks' | 'minGainDb' | 'attackTc' | 'releaseTc'>,
+): BalanceSimParams[] {
   const out: BalanceSimParams[] = []
   for (const minBlocks of grid.minBlocks) {
     for (const minGainDb of grid.minGainDb) {
@@ -328,13 +354,23 @@ export function expandBalanceGrid(grid: typeof BALANCE_GRID, limiter: BalanceSim
 }
 
 /** Expand the limiter grid into full candidate params, balance held fixed. */
-export function expandLimiterGrid(grid: typeof LIMITER_GRID, balance: Pick<BalanceSimParams, 'minBlocks' | 'minGainDb' | 'attackTc' | 'releaseTc'>): BalanceSimParams[] {
+export function expandLimiterGrid(
+  grid: typeof LIMITER_GRID,
+  balance: Pick<BalanceSimParams, 'minBlocks' | 'minGainDb' | 'attackTc' | 'releaseTc'>,
+): BalanceSimParams[] {
   const out: BalanceSimParams[] = []
   for (const thresholdDb of grid.thresholdDb) {
     for (const ratio of grid.ratio) {
       for (const attackMs of grid.attackMs) {
         for (const releaseMs of grid.releaseMs) {
-          out.push({ ...balance, thresholdDb, ratio, attackMs, releaseMs, kneeDb: DEFAULT_LIMITER.kneeDb })
+          out.push({
+            ...balance,
+            thresholdDb,
+            ratio,
+            attackMs,
+            releaseMs,
+            kneeDb: DEFAULT_LIMITER.kneeDb,
+          })
         }
       }
     }
@@ -364,17 +400,20 @@ function splitParams(p: BalanceSimParams) {
 /**
  * Run a single candidate against the suite and score it.
  */
-export function evaluateCandidate(
-  params: BalanceSimParams,
-  suite: TuneScenario[],
-): TuneCandidate {
+export function evaluateCandidate(params: BalanceSimParams, suite: TuneScenario[]): TuneCandidate {
   const { balance, smoother, limiter } = splitParams(params)
   const scenarioInputs = suite.map((sc) => ({
     scenario: sc.name,
     target: sc.scoreTarget ?? sc.target,
     results: runBalanceSim(
       sc.tabs.map((t) => ({ id: t.id, signal: t.signal })),
-      { targetLufs: sc.target, durationSec: sc.durationSec, balanceParams: balance, gainSmoother: smoother, limiter },
+      {
+        targetLufs: sc.target,
+        durationSec: sc.durationSec,
+        balanceParams: balance,
+        gainSmoother: smoother,
+        limiter,
+      },
     ),
   }))
   const { totalCost, perScenario, gainRatePenalty } = scoreScenarioSuite(
