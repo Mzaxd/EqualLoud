@@ -91,6 +91,23 @@ const pending: PendingTakeover[] = []
 let contextHandshaken = false
 
 /**
+ * Whether any media element awaiting takeover is currently playing AND unmuted.
+ * Such an element is already producing audible sound, which means Chrome has
+ * granted the page playback permission (session-restore autoplay, a prior
+ * gesture, …) — and that permission is what lets a take-over AudioContext reach
+ * `running`. Used to authorise context creation without a live userActivation.
+ */
+function hasAudiblePlayback(): boolean {
+  for (const p of pending) {
+    const el = p.el
+    // `paused`/`ended`/`muted` are the standard "is this making sound?" signals.
+    // readyState check avoids treating a not-yet-playing element as audible.
+    if (!el.paused && !el.ended && !el.muted && el.readyState >= 2) return true
+  }
+  return false
+}
+
+/**
  * Whether it is currently legal to *create* the AudioContext and expect it to
  * reach `running`. Chrome's autoplay policy allows this only while the document
  * has a transient user activation. A muted-autoplay `play` event does NOT carry
@@ -100,8 +117,23 @@ let contextHandshaken = false
  * `navigator.userActivation` (Chrome/Edge) is the reliable signal; we fall back
  * to `true` where it's absent (older browsers) so we never get permanently stuck
  * — the worst case there is the original warning, not a dead feature.
+ *
+ * `audiblePlayback` is the escape hatch for the session-restore case: when
+ * Chrome reopens with a restored tab, the page's media element autoplays
+ * NON-MUTED (Chrome inherited playback permission on restore), but
+ * `userActivation.isActive` is still `false`. Treating that as "no permission"
+ * — the old behaviour — left EqualLoud permanently dead until the user happened
+ * to click the page. But an element already producing audible sound IS proof
+ * that Chrome granted playback permission, and `createMediaElementSource` lifts
+ * that permission onto the AudioContext. So a live, unmuted, playing element
+ * authorises context creation regardless of `userActivation`. (Muted autoplay
+ * stays gated: a muted element's privilege doesn't cover an audio graph.)
  */
-export function canCreateContext(): boolean {
+export function canCreateContext(hint?: { audiblePlayback?: boolean }): boolean {
+  // An audibly-playing media element already carries playback permission that
+  // extends to a take-over AudioContext — allow creation even without a live
+  // gesture. Checked first so it overrides the muted-autoplay gate below.
+  if (hint?.audiblePlayback) return true
   const ua = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation
   return ua ? ua.isActive : true
 }
@@ -123,7 +155,13 @@ export function ensureContextAndUpgrade(): boolean {
   // First-time creation is gesture-gated. Subsequent calls (context already
   // exists) may resume/upgrade without an active gesture — cheap and harmless.
   if (!sharedCtx || sharedCtx.state === 'closed') {
-    if (!canCreateContext()) return false
+    // If any pending media element is already producing audible sound, the page
+    // already holds playback permission (session-restore autoplay, a prior
+    // gesture on the element, …) and that permission lifts onto a take-over
+    // context — so we may create it even without a *live* userActivation. This
+    // is what unblocks the "tab restored, video autoplays, EqualLoud dead"
+    // case. Muted autoplay stays gated (audible playback == false).
+    if (!canCreateContext({ audiblePlayback: hasAudiblePlayback() })) return false
     // Created here, synchronously, inside the gesture → Chrome permits running.
     sharedCtx = new AudioContext()
     const workletUrl = chrome.runtime.getURL(lufsProcessorUrl)
