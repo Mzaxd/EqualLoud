@@ -1,6 +1,9 @@
 {
   "popup": {
     "title": "EqualLoud",
+    "power": "开关响度均衡",
+    "playing": "正在播放",
+    "tabCount": "{count} 个",
     "status": {
       "balancing": "正在平衡 {count} 个标签页",
       "waiting": "正在等待音频播放...",
@@ -9,7 +12,8 @@
   },
   "footer": {
     "brand": "EqualLoud",
-    "author": "github.com/mzaxd/EqualLoud"
+    "author": "github.com/mzaxd/EqualLoud",
+    "source": "在 GitHub 查看源码"
   },
   "autobalance": {
     "title": "目标音量",
@@ -27,6 +31,7 @@
   },
   "limiter": {
     "title": "输出压限",
+    "subtitle": "防止破音 · 默认开",
     "tooltip": {
       "enable": "启用压限",
       "disable": "禁用压限"
@@ -82,7 +87,8 @@
     "balance": {
       "onHint": "音量平衡：开（点击旁通 / A-B 对比）",
       "offHint": "音量平衡：关 — 直通原始音量（点击重新开启）",
-      "bypass": "直通"
+      "bypass": "直通",
+      "dash": "—"
     },
     "status": {
       "collecting": "分析中...",

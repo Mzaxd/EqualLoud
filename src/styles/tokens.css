@@ -1,0 +1,42 @@
+/**
+ * EqualLoud design tokens — the 「暖夜灯 / warm night-light」 dark amber theme.
+ *
+ * Every colour is an oklch() value lifted verbatim from the redesign prototype
+ * (popup.html / onboarding.html). Components reference these via var(--…)
+ * rather than hard-coding hex, so a future re-skin is a one-file change.
+ *
+ * Font-family stacks point at the locally-bundled families (see fonts.css);
+ * each falls back through native UI faces so text renders even before the
+ * woff2 finishes loading, and in non-extension contexts (unit tests, jsdom).
+ */
+:root {
+  /* Surfaces — a near-black warm brown, deepening toward the edges. */
+  --bg: oklch(20% 0.014 52);
+  --bg-deep: oklch(15% 0.016 50);
+  --surface: oklch(25% 0.014 52);
+  --surface-2: oklch(30% 0.013 52);
+
+  /* Text. --fg is the warm off-white body colour; --muted/--faint step down. */
+  --fg: oklch(94% 0.01 70);
+  --muted: oklch(71% 0.012 58);
+  --faint: oklch(54% 0.012 56);
+
+  /* Hairlines / borders. */
+  --hair: oklch(30% 0.012 52);
+
+  /* Honey — the signature amber accent. --honey-2 is the dimmer stop used on
+     borders/hovers; --honey-soft is a translucent fill for active states. */
+  --honey: oklch(83% 0.118 76);
+  --honey-2: oklch(72% 0.11 68);
+  --honey-soft: oklch(83% 0.118 76 / 0.16);
+
+  /* Functional accents. --cut = attenuation / gain reduction (cool blue);
+     --ok = positive on-states (privacy, limiter active). */
+  --cut: oklch(68% 0.035 250);
+  --ok: oklch(76% 0.09 150);
+
+  /* Typography. */
+  --font-serif: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+  --font-ui: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}

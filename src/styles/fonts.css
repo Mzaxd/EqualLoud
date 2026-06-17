@@ -1,0 +1,82 @@
+/**
+ * Locally-bundled font faces for the EqualLoud 「暖夜灯」 theme.
+ *
+ * Bundling woff2 (no Google Fonts CDN) keeps the popup offline-capable and
+ * sidesteps the MV3 remote-font CSP entirely — the files are served from the
+ * extension's own origin via /fonts/… . Latin subsets only; the UI is
+ * English/Chinese and the Chinese system font covers CJK glyphs.
+ *
+ * Licences: Newsreader + Hanken Grotesk = OFL-1.1; JetBrains Mono = OFL-1.1.
+ * All permit free redistribution.
+ */
+
+/* Newsreader — the serif used for headings, labels and the target value.
+   opsz (optical size) axis tracked via the family name so the browser picks
+   the display cut at larger sizes. */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/newsreader-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/newsreader-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/newsreader-600.woff2') format('woff2');
+}
+
+/* Hanken Grotesk — the UI body face (status text, button labels, hints). */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/hanken-grotesk-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/hanken-grotesk-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/hanken-grotesk-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/hanken-grotesk-700.woff2') format('woff2');
+}
+
+/* JetBrains Mono — tabular numerics: gain values, limiter parameter readouts. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-700.woff2') format('woff2');
+}

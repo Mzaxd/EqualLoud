@@ -47,10 +47,11 @@ describe('Limiter', () => {
     expect(wrapper.text()).toContain('OFF')
   })
 
-  it('toggle does not have active class when disabled', () => {
+  it('toggle does not have the on class when disabled', () => {
     const wrapper = mountComponent()
     const toggle = wrapper.find('.limiter-toggle')
-    expect(toggle.classes()).not.toContain('active')
+    expect(toggle.exists()).toBe(true)
+    expect(toggle.classes()).not.toContain('on')
   })
 
   describe('all five parameters are always visible (no fold)', () => {
@@ -105,7 +106,7 @@ describe('Limiter', () => {
 
     it('disables all sliders when limiter is off', () => {
       const wrapper = mountComponent()
-      const sliders = wrapper.findAll('.param-slider')
+      const sliders = wrapper.findAll('.fader')
       expect(sliders.length).toBe(5)
       for (const s of sliders) {
         expect(s.attributes('disabled')).toBeDefined()
@@ -140,10 +141,10 @@ describe('Limiter', () => {
       expect(wrapper.text()).toContain('ON')
     })
 
-    it('toggle has active class when enabled', async () => {
+    it('toggle has the on class when enabled', async () => {
       const wrapper = await mountEnabled()
       const toggle = wrapper.find('.limiter-toggle')
-      expect(toggle.classes()).toContain('active')
+      expect(toggle.classes()).toContain('on')
     })
 
     it('shows the configured parameter values', async () => {
@@ -157,7 +158,7 @@ describe('Limiter', () => {
 
     it('does not disable sliders when enabled', async () => {
       const wrapper = await mountEnabled()
-      const sliders = wrapper.findAll('.param-slider')
+      const sliders = wrapper.findAll('.fader')
       for (const s of sliders) {
         expect(s.attributes('disabled')).toBeUndefined()
       }
