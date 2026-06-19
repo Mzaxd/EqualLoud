@@ -109,7 +109,9 @@ function formatRatio(x: number): string {
         <span class="s">{{ t('limiter.subtitle') }}</span>
       </div>
       <div class="r">
-        <span class="state" :class="{ off: !isEnabled }">{{ isEnabled ? t('limiter.on') : t('limiter.off') }}</span>
+        <span class="state" :class="{ off: !isEnabled }">{{
+          isEnabled ? t('limiter.on') : t('limiter.off')
+        }}</span>
         <button
           class="mt limiter-toggle"
           :class="{ on: isEnabled }"
@@ -145,9 +147,12 @@ function formatRatio(x: number): string {
           step="0.1"
           :value="threshold"
           :disabled="!isEnabled"
+          :aria-valuetext="formatThreshold(threshold)"
           @input="handleThresholdChange"
         />
-        <div class="cr"><span></span><span class="hint">{{ thresholdHint }}</span></div>
+        <div class="cr">
+          <span></span><span class="hint">{{ thresholdHint }}</span>
+        </div>
       </div>
 
       <!-- Ratio -->
@@ -167,9 +172,12 @@ function formatRatio(x: number): string {
           step="1"
           :value="ratio"
           :disabled="!isEnabled"
+          :aria-valuetext="formatRatio(ratio)"
           @input="handleRatioChange"
         />
-        <div class="cr"><span></span><span class="hint">{{ ratioHint }}</span></div>
+        <div class="cr">
+          <span></span><span class="hint">{{ ratioHint }}</span>
+        </div>
       </div>
 
       <!-- Attack -->
@@ -189,6 +197,7 @@ function formatRatio(x: number): string {
           step="0.1"
           :value="attack"
           :disabled="!isEnabled"
+          :aria-valuetext="formatAttack(attack)"
           @input="handleAttackChange"
         />
         <div class="cr">
@@ -218,6 +227,7 @@ function formatRatio(x: number): string {
           step="5"
           :value="release"
           :disabled="!isEnabled"
+          :aria-valuetext="formatRelease(release)"
           @input="handleReleaseChange"
         />
         <div class="cr">
@@ -247,6 +257,7 @@ function formatRatio(x: number): string {
           step="1"
           :value="knee"
           :disabled="!isEnabled"
+          :aria-valuetext="formatKnee(knee)"
           @input="handleKneeChange"
         />
         <div class="cr">
@@ -444,5 +455,13 @@ function formatRatio(x: number): string {
 .fader:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Keyboard focus ring — the default outline was removed by `outline: none`
+ * above, so keyboard users had no visible focus indicator. Restored only on
+ * :focus-visible so mouse users don't see a ring on click. */
+.fader:focus-visible {
+  outline: 2px solid var(--honey);
+  outline-offset: 3px;
 }
 </style>

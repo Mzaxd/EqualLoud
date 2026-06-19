@@ -138,19 +138,31 @@ export class MediaManager {
     // src rather than creating new elements, so childList-only observation
     // missed the "new clip loaded into the same node" transition entirely.
     // Without this the primary stayed glued to a stale clip's LUFS readings.
+    //
+    // Mutation coalescing: on DOM-busy sites (Twitter, Reddit, infinite-scroll)
+    // the observer can fire dozens of times per frame. Each synchronous rescan()
+    // does a querySelectorAll + full diff, which is wasteful when the next
+    // mutation is already queued. We set a dirty flag and schedule ONE rescan
+    // per microtask via queueMicrotask — within a single JS turn every batched
+    // mutation collapses into a single query.
+    let rescanQueued = false
+    let pendingRepick = false
     this.observer = new MutationObserver((mutations) => {
-      // A src mutation on an attached element means a recycled reel just
-      // loaded new media — re-pick so the (now paused) recycled node loses to
-      // whichever node starts playing. Full rescan still handles add/remove.
-      let repick = false
       for (const m of mutations) {
         if (m.type === 'attributes' && m.attributeName === 'src') {
-          repick = true
-          break
+          pendingRepick = true
         }
       }
-      this.rescan()
-      if (repick) this.repickPrimary()
+      if (!rescanQueued) {
+        rescanQueued = true
+        queueMicrotask(() => {
+          rescanQueued = false
+          const shouldRepick = pendingRepick
+          pendingRepick = false
+          this.rescan()
+          if (shouldRepick) this.repickPrimary()
+        })
+      }
     })
   }
 
