@@ -617,11 +617,14 @@ export function seedTab(tab: Partial<TabState> & { tabId: number }): TabState {
   return full
 }
 
-export { DEFAULT_MAX_GAIN_DB, DEFAULT_MIN_GAIN_DB }
+export {
+  DEFAULT_MAX_GAIN_DB,
+  DEFAULT_MIN_GAIN_DB,
 
-// Catch promise rejections that slipped past every per-call .catch() — without
-// this they'd surface only as silent "unchecked" warnings with no buffer entry,
-// meaning the popup export path could never see them.
+  // Catch promise rejections that slipped past every per-call .catch() — without
+  // this they'd surface only as silent "unchecked" warnings with no buffer entry,
+  // meaning the popup export path could never see them.
+}
 ;(self as unknown as { addEventListener: typeof addEventListener }).addEventListener(
   'unhandledrejection',
   (event: PromiseRejectionEvent) => {

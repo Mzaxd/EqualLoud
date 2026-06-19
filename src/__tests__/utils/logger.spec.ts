@@ -1,12 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LogEntry } from '@/messages/protocol'
-import {
-  clearLogs,
-  createLogger,
-  getRecentLogs,
-  loadLogs,
-} from '@/utils/logger'
+import { clearLogs, createLogger, getRecentLogs, loadLogs } from '@/utils/logger'
 
 /**
  * The logger gates the minimum level on `import.meta.env.DEV` (dev → debug,

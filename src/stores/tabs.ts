@@ -195,9 +195,11 @@ export const useTabsStore = defineStore('tabs', () => {
    */
   async function exportLogs(): Promise<string | null> {
     try {
-      const resp = (await chrome.runtime.sendMessage({ type: 'GET_LOGS' })) as {
-        entries?: LogEntry[]
-      } | undefined
+      const resp = (await chrome.runtime.sendMessage({ type: 'GET_LOGS' })) as
+        | {
+            entries?: LogEntry[]
+          }
+        | undefined
       if (!resp || !Array.isArray(resp.entries)) return null
       return resp.entries.map(formatLogEntry).join('\n')
     } catch (err) {

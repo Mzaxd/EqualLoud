@@ -250,6 +250,7 @@ async function computeAlignment(): Promise<void> {
   /* Center the 10px-wide arrow (5px border × 2) on the icon's projected x. */
   left: calc(var(--arrow-ratio, 0.5) * 100% - 5px);
   border: 5px solid transparent;
+  border-top-color: var(--bg-deep);
 }
 
 /* Arrow on the bottom edge, pointing down (default/above placement). */
