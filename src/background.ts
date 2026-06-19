@@ -24,11 +24,16 @@ import {
 } from '@/audio/config'
 import {
   isNotification,
+  POPUP_PORT_NAME,
   type IncomingMessage,
   type LimiterSettings,
   type Settings,
   type TabState,
 } from '@/messages/protocol'
+import { CURRENT_SCHEMA_VERSION, hydratePayload } from '@/storage/migrate'
+import { clearLogs, createLogger, getRecentLogs, loadLogs } from '@/utils/logger'
+
+const log = createLogger('sw')
 
 // ---------------------------------------------------------------------------
 // In-memory state
@@ -47,75 +52,119 @@ let limiter: LimiterSettings = { ...DEFAULT_LIMITER_SETTINGS }
 let lastBalanceMs = 0
 
 /**
+ * Currently-connected popup Ports. The popup opens one on mount and receives
+ * {@link StatePushMessage} pushes whenever the SW's state changes — replacing
+ * the old 4 Hz GET_STATE polling with a ~10 Hz push that tracks balance runs.
+ * Ports are dropped on disconnect (popup closed / SW recycled).
+ */
+const popupPorts = new Set<chrome.runtime.Port>()
+
+/**
+ * Push the full current state to every connected popup Port. Cheap when there
+ * are no popups open (the set is empty). Called from every state-mutation site
+ * (balance pass, setting change, tab attach/detach) so the popup never shows
+ * stale data and never needs to poll.
+ */
+function pushStateToPopups(): void {
+  if (popupPorts.size === 0) return
+  const msg = {
+    type: 'STATE_PUSH' as const,
+    tabs: Array.from(tabs.values()),
+    settings,
+    limiter,
+  }
+  for (const port of popupPorts) {
+    try {
+      port.postMessage(msg)
+    } catch {
+      // Port may have disconnected between events; the onDisconnect handler
+      // will reap it. Ignore here to avoid blocking the state mutation.
+    }
+  }
+}
+
+/**
  * Resolves once settings have been (re)loaded from storage. Every handler
  * awaits this so a freshly-woken SW answers with the user's real settings,
  * not the defaults.
  */
-let settingsLoaded: Promise<void> = loadSettings()
+let settingsLoaded: Promise<void> = loadSettings().catch((err) => {
+  // A storage read failure must NOT leave settingsLoaded pending forever —
+  // every handler awaits it, so a rejection here would freeze the SW. Fall
+  // back to defaults and log so the user has a signal.
+  log.error('settings load failed; using defaults', err)
+})
+
+/**
+ * Resolves once the diagnostic-log ring buffer has been restored from
+ * `chrome.storage.session`. Awaited before `GET_LOGS` so a freshly-woken SW
+ * (whose in-memory buffer was lost) still reports pre-sleep history.
+ */
+let logsLoaded: Promise<void> = loadLogs()
 
 // ---------------------------------------------------------------------------
-// Storage
+// Storage (versioned — see @/storage/migrate)
 // ---------------------------------------------------------------------------
 
+/**
+ * Load settings + limiter from storage through the migration chain, then seed
+ * the in-memory state. The stored records are version-tagged (`__v`); any
+ * pre-versioning data (no `__v`) is run through `migrate_v0_v1`, which is where
+ * the old per-field type validation + ratio clamp now live.
+ */
 async function loadSettings(): Promise<void> {
-  const result = await chrome.storage.local.get(['settings', 'limiter'])
-  const storedSettings = result.settings as Partial<Settings> | undefined
-  if (storedSettings) {
-    // Validate before spreading: a corrupt or future-version object could put
-    // a non-number into targetLufs, which would propagate to computeBalanceGains
-    // as a NaN gain and silently mute tabs. Drop any field of the wrong type.
-    const picked: Partial<Settings> = {}
-    if (typeof storedSettings.enabled === 'boolean') picked.enabled = storedSettings.enabled
-    if (
-      typeof storedSettings.targetLufs === 'number' &&
-      Number.isFinite(storedSettings.targetLufs)
-    ) {
-      picked.targetLufs = storedSettings.targetLufs
-    }
-    settings = { ...settings, ...picked }
-  }
-  const storedLimiter = result.limiter as Partial<LimiterSettings> | undefined
-  if (storedLimiter) {
-    const picked: Partial<LimiterSettings> = {}
-    if (typeof storedLimiter.enabled === 'boolean') picked.enabled = storedLimiter.enabled
-    for (const k of ['thresholdDb', 'kneeDb', 'attackMs', 'releaseMs'] as const) {
-      const v = storedLimiter[k]
-      if (typeof v === 'number' && Number.isFinite(v)) picked[k] = v
-    }
-    if (typeof storedLimiter.ratio === 'number' && Number.isFinite(storedLimiter.ratio)) {
-      // Clamp to the Web Audio DynamicsCompressorNode range [1, 20]. Older
-      // versions defaulted to ratio=30; without this, the stale value is read
-      // back on every SW restart and re-triggers the "value 30 outside nominal
-      // range [1, 20]" console warning when applied to the node.
-      picked.ratio = Math.min(20, Math.max(1, storedLimiter.ratio))
-    }
-    limiter = { ...limiter, ...picked }
+  const result = await chrome.storage.local.get(['settings', 'limiter', '__v'])
+  const hydrated = hydratePayload(
+    {
+      __v: result.__v as number | undefined,
+      settings: result.settings as Partial<Settings> | undefined,
+      limiter: result.limiter as Partial<LimiterSettings> | undefined,
+    },
+    settings,
+  )
+  settings = hydrated.settings
+  limiter = hydrated.limiter
+  // Persist the (possibly newly-migrated) version tag so subsequent loads skip
+  // the migration chain. Cheap write; only fires once per SW cold start.
+  if (hydrated.__v !== (result.__v as number | undefined)) {
+    void chrome.storage.local.set({ __v: hydrated.__v })
   }
 }
 
 async function persistSettings(): Promise<void> {
-  await chrome.storage.local.set({ settings })
+  await chrome.storage.local.set({ settings, __v: CURRENT_SCHEMA_VERSION })
 }
 
 async function persistLimiter(): Promise<void> {
-  await chrome.storage.local.set({ limiter })
+  await chrome.storage.local.set({ limiter, __v: CURRENT_SCHEMA_VERSION })
 }
 
 // ---------------------------------------------------------------------------
 // Tab state helpers
 // ---------------------------------------------------------------------------
 
-function ensureTab(tabId: number, title: string, url: string): TabState {
+function ensureTab(
+  tabId: number,
+  title: string,
+  url: string,
+  seed?: { appliedGainDb?: number; favIconUrl?: string },
+): TabState {
   let tab = tabs.get(tabId)
   if (!tab) {
+    const seedGain = seed?.appliedGainDb
     tab = {
       tabId,
       title,
       url,
+      favIconUrl: seed?.favIconUrl ?? '',
       isCapturing: true,
       shortTerm: -Infinity,
       blockCount: 0,
-      appliedGainDb: 0,
+      // Seed from the content script's last-applied gain when available so a
+      // SW recovering from sleep doesn't reset a loud tab to 0 dB (full
+      // volume) and blip the user before the next heartbeat re-balances it.
+      // Falls back to 0 dB (unity) for first-ever attach or older CS.
+      appliedGainDb: typeof seedGain === 'number' && Number.isFinite(seedGain) ? seedGain : 0,
       maxGainDb: DEFAULT_MAX_GAIN_DB,
       balanceEnabled: true,
     }
@@ -178,6 +227,8 @@ async function balanceOnce(): Promise<void> {
     sends.push(sendToTab(d.tabId, { type: 'SET_GAIN', tabId: d.tabId, gainDb: d.gainDb }))
   }
   await Promise.all(sends)
+  // Reflect the new applied gains to any open popup (live gain readouts).
+  pushStateToPopups()
 }
 
 /** Balance if enabled and the throttle window has elapsed. Fire-and-forget. */
@@ -185,7 +236,7 @@ function maybeBalance(): void {
   const now = Date.now()
   if (shouldThrottleBalance(lastBalanceMs, now)) return
   lastBalanceMs = now
-  balanceOnce().catch((err) => console.error('[EqualLoud] balance failed', err))
+  balanceOnce().catch((err) => log.error('balance failed', err))
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +291,7 @@ async function handleSetTargetLufs(targetLufs: number): Promise<{ settings: Sett
   await persistSettings()
   lastBalanceMs = 0 // force an immediate rebalance
   maybeBalance()
+  pushStateToPopups()
   return { settings }
 }
 
@@ -257,6 +309,7 @@ async function handleSetEnabled(enabled: boolean): Promise<{ settings: Settings 
     maybeBalance()
   }
   await updateBadge()
+  pushStateToPopups()
   return { settings }
 }
 
@@ -268,6 +321,9 @@ async function handleToggleBalance(tabId: number): Promise<{ tabs: TabState[] }>
     // needs to push the computed gain, disabling needs to push unity.
     lastBalanceMs = 0
     maybeBalance()
+    // maybeBalance is fire-and-forget; push the balanceEnabled flip now so the
+    // popup's BYPASS/passthrough label updates without waiting for the gain pass.
+    pushStateToPopups()
   }
   return { tabs: Array.from(tabs.values()) }
 }
@@ -283,6 +339,7 @@ async function handleSetLimiter(
       sendToTab(t.tabId, { type: 'SET_LIMITER', settings: limiter }),
     ),
   )
+  pushStateToPopups()
   return { limiter }
 }
 
@@ -299,12 +356,36 @@ async function handleNotification(
     case 'MEDIA_ATTACHED': {
       // Content scripts don't know their own tabId; use the sender's.
       if (senderTabId == null) return
-      ensureTab(senderTabId, message.title ?? '', message.url ?? '')
+      // Whether this is a fresh SW-recovery registration (tab was lost from
+      // the in-memory Map on sleep) vs. a known tab re-announcing. Determines
+      // whether we can trust the echoed gain to suppress the 0 dB blip.
+      const wasMissing = !tabs.has(senderTabId)
+      const seedGain = message.appliedGainDb
+      ensureTab(senderTabId, message.title ?? '', message.url ?? '', {
+        appliedGainDb: seedGain,
+      })
       await pushConfigToTab(senderTabId)
-      // Apply current gain decision immediately so the tab doesn't blip at 0 dB.
-      lastBalanceMs = 0
-      maybeBalance()
+      if (wasMissing && Number.isFinite(seedGain)) {
+        // SW woke up and this tab was missing. Rather than letting
+        // maybeBalance() force a unity (0 dB) decision for a cold tab
+        // (blockCount: 0) — which would blip the GainNode back to full volume
+        // — echo the gain the content script already has applied so the audio
+        // graph stays put until a real LUFS_REPORT arrives and re-balances.
+        await sendToTab(senderTabId, {
+          type: 'SET_GAIN',
+          tabId: senderTabId,
+          gainDb: seedGain,
+        })
+      } else {
+        // Known tab (normal primary switch) or no gain reported (older CS):
+        // recompute and apply the current gain decision as before.
+        lastBalanceMs = 0
+        maybeBalance()
+      }
       await updateBadge()
+      // A new tab appeared (or a known one re-announced) — push so the popup's
+      // "Now playing" list updates immediately rather than on the next balance.
+      pushStateToPopups()
       return
     }
     case 'LUFS_REPORT': {
@@ -315,7 +396,9 @@ async function handleNotification(
         // script is clearly still alive (it's heartbeating), so recover:
         // re-register it from the sender, accept this LUFS reading, and push
         // current config so the tab resumes balancing immediately.
-        t = ensureTab(senderTabId, sender.tab?.title ?? '', sender.tab?.url ?? '')
+        t = ensureTab(senderTabId, sender.tab?.title ?? '', sender.tab?.url ?? '', {
+          appliedGainDb: message.appliedGainDb,
+        })
         void pushConfigToTab(senderTabId)
       }
       t.shortTerm = message.shortTerm ?? -Infinity
@@ -327,6 +410,9 @@ async function handleNotification(
       if (senderTabId == null) return
       removeTab(senderTabId)
       await updateBadge()
+      // Push so the popup drops the row immediately (no 100 ms wait for a
+      // balance pass that will never come for a removed tab).
+      pushStateToPopups()
       return
     }
   }
@@ -340,7 +426,7 @@ export async function handleMessage(
   message: IncomingMessage,
   sender: chrome.runtime.MessageSender = {} as chrome.runtime.MessageSender,
 ): Promise<unknown> {
-  await settingsLoaded
+  await Promise.all([settingsLoaded, logsLoaded])
 
   if (isNotification(message)) {
     await handleNotification(message, sender)
@@ -358,6 +444,11 @@ export async function handleMessage(
       return handleToggleBalance(message.tabId)
     case 'SET_LIMITER_SETTINGS':
       return handleSetLimiter(message.settings)
+    case 'GET_LOGS':
+      return { entries: getRecentLogs() }
+    case 'CLEAR_LOGS':
+      clearLogs()
+      return { cleared: true as const }
     default:
       return { error: 'Unknown message type' }
   }
@@ -368,13 +459,34 @@ export async function handleMessage(
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((message: IncomingMessage, sender, sendResponse) => {
+  // Defensive: a port/message callback can be invoked after the extension
+  // context was invalidated; check lastError before touching the channel so we
+  // never throw into Chrome's internals (which only surfaces a confusing
+  // "Unchecked runtime.lastError" in the page console).
+  if (chrome.runtime.lastError) {
+    log.warn('onMessage lastError', chrome.runtime.lastError)
+    return false
+  }
   handleMessage(message, sender)
     .then((resp) => sendResponse(resp))
     .catch((err) => {
-      console.error('[EqualLoud] message handler error', err)
+      log.error('message handler error', err)
       sendResponse({ error: err instanceof Error ? err.message : String(err) })
     })
   return true // keep the channel open for the async response
+})
+
+// Popup long-lived Port: replaces the 4 Hz GET_STATE polling. On connect we
+// immediately push the full current state (cold-start sync), then every
+// state-mutation site calls pushStateToPopups() to stream updates down.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== POPUP_PORT_NAME) return
+  popupPorts.add(port)
+  // Send the current snapshot immediately so the popup doesn't start empty.
+  pushStateToPopups()
+  port.onDisconnect.addListener(() => {
+    popupPorts.delete(port)
+  })
 })
 
 // Tab lifecycle: drop state when a tab closes.
@@ -385,12 +497,13 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 })
 
-// Refresh title/url as the page navigates.
+// Refresh title/url/favIconUrl as the page navigates.
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   const t = tabs.get(tabId)
   if (!t) return
   if (info.title) t.title = info.title
   if (info.url) t.url = info.url
+  if (info.favIconUrl) t.favIconUrl = info.favIconUrl
 })
 
 // Prerender/swap replaces the tab id without onRemoved firing in the order we
@@ -425,6 +538,14 @@ async function scanTabs(): Promise<void> {
     // Skip non-http(s) pages — content scripts don't run there, so PING
     // would just throw "Receiving end does not exist".
     if (!tab.url || !/^https?:/i.test(tab.url)) continue
+    // Refresh title/url/favIconUrl from Chrome's authoritative tab record.
+    // The content script only knows title+url; favIconUrl comes from here.
+    const known = tabs.get(tabId)
+    if (known) {
+      if (tab.title) known.title = tab.title
+      if (tab.url) known.url = tab.url
+      if (tab.favIconUrl) known.favIconUrl = tab.favIconUrl
+    }
     try {
       await sendToTab(tabId, { type: 'PING' })
     } catch {
@@ -440,8 +561,15 @@ async function scanTabs(): Promise<void> {
 }
 
 // (Re)load on install/startup.
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   void updateBadge()
+  // First install: open the onboarding page so the user sees what the
+  // extension does and why <all_urls> is needed, before they encounter it in
+  // the popup. Skipped on update (UpdateNotice handles that surface) and on
+  // Chrome install (details.reason === 'chrome_update').
+  if (details.reason === 'install') {
+    void chrome.tabs.create({ url: chrome.runtime.getURL('onboarding.html') })
+  }
 })
 chrome.runtime.onStartup.addListener(() => {
   void updateBadge()
@@ -454,7 +582,7 @@ void updateBadge()
 // eventually rebuild it, but that's up to 60s of dead audio. Kick an immediate
 // scan so PINGs go out within ~1s and tabs re-announce within a few seconds.
 // (scanTabs is async and self-contained; fire-and-forget on module load.)
-void scanTabs().catch((err) => console.error('[EqualLoud] initial scan failed', err))
+void scanTabs().catch((err) => log.error('initial scan failed', err))
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -466,7 +594,9 @@ export function resetState(): void {
   settings = { enabled: true, targetLufs: DEFAULT_TARGET_LUFS }
   limiter = { ...DEFAULT_LIMITER_SETTINGS }
   lastBalanceMs = 0
+  popupPorts.clear()
   settingsLoaded = loadSettings()
+  logsLoaded = loadLogs()
 }
 
 /** Inject a tab directly (test-only). */
@@ -474,6 +604,7 @@ export function seedTab(tab: Partial<TabState> & { tabId: number }): TabState {
   const full: TabState = {
     title: 'Tab',
     url: 'https://example.com',
+    favIconUrl: '',
     isCapturing: true,
     shortTerm: -14,
     blockCount: 50,
@@ -488,4 +619,14 @@ export function seedTab(tab: Partial<TabState> & { tabId: number }): TabState {
 
 export { DEFAULT_MAX_GAIN_DB, DEFAULT_MIN_GAIN_DB }
 
-console.log('[EqualLoud] background service worker loaded')
+// Catch promise rejections that slipped past every per-call .catch() — without
+// this they'd surface only as silent "unchecked" warnings with no buffer entry,
+// meaning the popup export path could never see them.
+;(self as unknown as { addEventListener: typeof addEventListener }).addEventListener(
+  'unhandledrejection',
+  (event: PromiseRejectionEvent) => {
+    log.error('unhandled rejection', event.reason)
+  },
+)
+
+log.info('background service worker loaded')

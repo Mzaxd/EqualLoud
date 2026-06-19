@@ -4,9 +4,30 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useTabsStore, hasEnoughSamples, type TabLufs } from '@/stores/tabs'
 
 function mockChromeRuntime(response: Record<string, unknown> = {}): void {
+  // A minimal Port mock: collects listeners so tests can fire messages at it.
+  const portHandlers: ((msg: unknown) => void)[] = []
+  const disconnectHandlers: (() => void)[] = []
+  const fakePort = {
+    name: 'equalloud-popup',
+    onMessage: { addListener: vi.fn((cb: (msg: unknown) => void) => portHandlers.push(cb)) },
+    onDisconnect: { addListener: vi.fn((cb: () => void) => disconnectHandlers.push(cb)) },
+    postMessage: vi.fn(),
+    disconnect: vi.fn(() => {
+      // Simulate Chrome firing onDisconnect on explicit disconnect.
+      for (const cb of disconnectHandlers) cb()
+    }),
+    // Test-only: deliver a STATE_PUSH to all registered handlers.
+    __deliver(msg: unknown): void {
+      for (const cb of portHandlers) cb(msg)
+    },
+    __disconnect(): void {
+      for (const cb of disconnectHandlers) cb()
+    },
+  }
   vi.stubGlobal('chrome', {
     runtime: {
       sendMessage: vi.fn().mockResolvedValue(response),
+      connect: vi.fn().mockReturnValue(fakePort),
     },
     storage: {
       onChanged: {
@@ -14,12 +35,16 @@ function mockChromeRuntime(response: Record<string, unknown> = {}): void {
         removeListener: vi.fn(),
       },
     },
+    // Expose for tests that need to drive the Port.
+    __port: fakePort,
   })
 }
 
-function mockWindowSetInterval(): void {
+function mockWindowTimers(): void {
   vi.stubGlobal('setInterval', vi.fn().mockReturnValue(1))
   vi.stubGlobal('clearInterval', vi.fn())
+  vi.stubGlobal('setTimeout', vi.fn().mockReturnValue(1))
+  vi.stubGlobal('clearTimeout', vi.fn())
 }
 
 describe('hasEnoughSamples', () => {
@@ -50,7 +75,7 @@ describe('useTabsStore', () => {
         releaseMs: 100,
       },
     })
-    mockWindowSetInterval()
+    mockWindowTimers()
   })
 
   describe('initial state', () => {
@@ -161,13 +186,67 @@ describe('useTabsStore', () => {
     })
   })
 
-  describe('startPolling / stopPolling', () => {
-    it('registers and unregisters the storage listener', () => {
+  describe('startConnection / stopConnection (Port-based push)', () => {
+    it('opens a Port with the popup name on start', () => {
       const store = useTabsStore()
-      store.startPolling()
-      expect(chrome.storage.onChanged.addListener).toHaveBeenCalled()
-      store.stopPolling()
-      expect(chrome.storage.onChanged.removeListener).toHaveBeenCalled()
+      store.startConnection()
+      expect(chrome.runtime.connect).toHaveBeenCalledWith({ name: 'equalloud-popup' })
+      store.stopConnection()
+    })
+
+    it('applies STATE_PUSH messages to the reactive refs', () => {
+      const store = useTabsStore()
+      store.startConnection()
+      const port = (chrome as unknown as { __port: { __deliver: (m: unknown) => void } }).__port
+      port.__deliver({
+        type: 'STATE_PUSH',
+        tabs: [
+          {
+            tabId: 99,
+            title: 'Pushed',
+            url: 'https://x.io',
+            isCapturing: true,
+            shortTerm: -10,
+            blockCount: 5,
+            appliedGainDb: 2,
+            maxGainDb: 12,
+            balanceEnabled: true,
+          },
+        ],
+        settings: { enabled: true, targetLufs: -16 },
+        limiter: {
+          enabled: false,
+          thresholdDb: -3,
+          kneeDb: 0,
+          ratio: 12,
+          attackMs: 5,
+          releaseMs: 200,
+        },
+      })
+      expect(store.tabs).toHaveLength(1)
+      expect(store.tabs[0]!.tabId).toBe(99)
+      expect(store.targetLufs).toBe(-16)
+      expect(store.isLimiterEnabled).toBe(false)
+      store.stopConnection()
+    })
+
+    it('ignores non-STATE_PUSH messages on the Port', () => {
+      const store = useTabsStore()
+      store.startConnection()
+      const before = store.tabs.length
+      const port = (chrome as unknown as { __port: { __deliver: (m: unknown) => void } }).__port
+      port.__deliver({ type: 'SOMETHING_ELSE' })
+      expect(store.tabs.length).toBe(before)
+      store.stopConnection()
+    })
+
+    it('disconnects the Port on stopConnection', () => {
+      const store = useTabsStore()
+      store.startConnection()
+      const port = (chrome as unknown as { __port: { disconnect: ReturnType<typeof vi.fn> } })
+        .__port
+      store.stopConnection()
+      expect(port.disconnect).toHaveBeenCalled()
     })
   })
 })

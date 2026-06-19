@@ -43,7 +43,10 @@
 import { GAIN_ATTACK_TC, GAIN_SMOOTH_TC } from '@/audio/config'
 import { dbToGain } from '@/audio/lufs'
 import type { LimiterSettings } from '@/messages/protocol'
+import { createLogger } from '@/utils/logger'
 import lufsProcessorUrl from '@/worklets/lufs-processor?worker&url'
+
+const log = createLogger('audio')
 
 /** What a successful measurement update looks like to the content script. */
 export interface LufsUpdate {
@@ -89,6 +92,64 @@ interface PendingTakeover {
 }
 const pending: PendingTakeover[] = []
 let contextHandshaken = false
+
+/**
+ * Number of currently-attached handles (lazy + upgraded). The shared
+ * AudioContext is closed only when this drops to zero AND the extension
+ * context is gone — never while a tab is actively producing audio. This is
+ * the lifetime backstop the old code lacked: `pagehide` disposed each
+ * element's nodes but the shared context lived forever, leaking across
+ * extension reloads.
+ */
+let activeHandleCount = 0
+
+/**
+ * Close the shared AudioContext if (a) the extension context has been
+ * invalidated (reload/disable) and (b) no handles remain attached. Safe to
+ * call any time — it re-checks both conditions. Closing while handles are
+ * live would cut their audio, so we only close on the teardown path.
+ */
+function maybeCloseSharedContext(): void {
+  if (!sharedCtx) return
+  if (sharedCtx.state === 'closed') return
+  if (activeHandleCount > 0) return
+  // Only close when the extension is actually going away; a transient
+  // zero-handle state (e.g. between two videos on an SPA) should keep the
+  // context warm for the next attach. `chrome.runtime.contextInvalidated` is
+  // a boolean property (Chrome 116+); once true it stays true and every
+  // chrome.* call starts throwing.
+  const rt = chrome.runtime as typeof chrome.runtime & { contextInvalidated?: boolean }
+  if (!rt.contextInvalidated) return
+  try {
+    void sharedCtx.close()
+    sharedCtx = null
+    workletReady = null
+    contextHandshaken = false
+  } catch {
+    /* already closed — ignore */
+  }
+}
+
+// The extension-reload / disable signal. When this fires, every chrome.* call
+// starts throwing; we respond by closing the context once handles drain.
+// `onContextInvalidated` is Chrome 116+ and not in @types/chrome yet, hence
+// the cast. Guarded so the module loads in test/jsdom contexts where `chrome`
+// may be undefined.
+if (typeof chrome !== 'undefined') {
+  const onContextInvalidated = (
+    chrome.runtime as typeof chrome.runtime & {
+      onContextInvalidated?: { addListener: (cb: () => void) => void }
+    }
+  ).onContextInvalidated
+  if (onContextInvalidated) {
+    onContextInvalidated.addListener(() => {
+      // If handles are still attached (audio playing), defer — each handle's
+      // dispose() decrements the counter and re-checks. If none are attached,
+      // close immediately.
+      maybeCloseSharedContext()
+    })
+  }
+}
 
 /**
  * Whether any media element awaiting takeover is currently playing AND unmuted.
@@ -166,7 +227,7 @@ export function ensureContextAndUpgrade(): boolean {
     sharedCtx = new AudioContext()
     const workletUrl = chrome.runtime.getURL(lufsProcessorUrl)
     workletReady = sharedCtx.audioWorklet.addModule(workletUrl).catch((err) => {
-      console.warn('[EqualLoud] LUFS worklet failed to load', err)
+      log.warn('LUFS worklet failed to load', err)
       workletReady = null // allow retry on next attach
     })
   }
@@ -205,10 +266,22 @@ export function ensureContextAndUpgrade(): boolean {
 export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null {
   if (attachedSources.has(el)) return null
 
+  // Track active handles so the shared context can be closed when the extension
+  // is invalidated and all elements have detached (see maybeCloseSharedContext).
+  activeHandleCount++
+
   // Already handshaken (e.g. SPA adds media after the first gesture): build the
-  // full chain right away, no lazy phase needed.
+  // full chain right away, no lazy phase needed. Wrap the dispose so the
+  // counter still decrements on teardown.
   if (contextHandshaken && sharedCtx && sharedCtx.state !== 'closed') {
-    return buildWebAudioHandle(el) ?? makeVolumeFallback(el)
+    const direct = buildWebAudioHandle(el) ?? makeVolumeFallback(el)
+    const origDispose = direct.dispose.bind(direct)
+    direct.dispose = () => {
+      origDispose()
+      activeHandleCount = Math.max(0, activeHandleCount - 1)
+      maybeCloseSharedContext()
+    }
+    return direct
   }
 
   // Lazy phase. `current` holds the active impl (volume fallback → full chain);
@@ -261,6 +334,10 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
       lufsCbs.clear()
       current.dispose()
       attachedSources.delete(el)
+      activeHandleCount = Math.max(0, activeHandleCount - 1)
+      // If the extension is being torn down and this was the last handle,
+      // release the shared AudioContext rather than leaking it.
+      maybeCloseSharedContext()
     },
   }
   return handle
@@ -290,7 +367,7 @@ function buildWebAudioHandle(
     source = ctx.createMediaElementSource(el)
     attachedSources.add(el)
   } catch (err) {
-    console.warn('[EqualLoud] createMediaElementSource failed; degrading to volume', err)
+    log.warn('createMediaElementSource failed; degrading to volume', err)
     return null
   }
 
@@ -330,7 +407,7 @@ function buildWebAudioHandle(
       })
     } catch (err) {
       // Worklet construct failed (e.g. module never registered under that name).
-      console.warn('[EqualLoud] LUFS worklet node creation failed', err)
+      log.warn('LUFS worklet node creation failed', err)
       return
     }
     listener = (ev: MessageEvent) => {

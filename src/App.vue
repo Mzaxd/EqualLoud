@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import AutoBalance from '@/components/AutoBalance.vue'
+import Diagnostics from '@/components/Diagnostics.vue'
 import Limiter from '@/components/Limiter.vue'
 import PowerToggle from '@/components/PowerToggle.vue'
 import TabList from '@/components/TabList.vue'
@@ -20,31 +21,60 @@ const settings = useSettingsStore()
 // behaviour), not a dropdown: each click flips between the two supported
 // locales. The bilingual label reads naturally in either active locale.
 const showSettings = ref(false)
+const showDiagnostics = ref(false)
+// Ref to the Diagnostics component so we can refresh its entry count whenever
+// the panel is expanded (avoids polling the SW while it's collapsed).
+const diagnosticsRef = ref<InstanceType<typeof Diagnostics> | null>(null)
 
 function toggleSettings(): void {
   showSettings.value = !showSettings.value
 }
 
-/** Label shown on the language button: the locale you'll switch *to*. */
-const langLabel = ref<'中 / EN' | '中 / EN'>('中 / EN')
-function refreshLangLabel(): void {
-  // Always render the same bilingual affordance — it reads naturally in either
-  // active locale and signals "this toggles Chinese / English".
-  langLabel.value = '中 / EN'
+function toggleDiagnostics(): void {
+  showDiagnostics.value = !showDiagnostics.value
+  // On expand, ask the panel to pull a fresh entry count from the SW. Done on
+  // next tick so the v-show/transition has committed the mount before refresh.
+  if (showDiagnostics.value) {
+    void nextTick(() => diagnosticsRef.value?.refreshCount())
+  }
 }
+
+/**
+ * Label shown on the language button: the locale you'll switch *to* on click.
+ * Computed from the current locale so it always names the OTHER language — a
+ * user reading English sees "中" (click for Chinese) and vice versa. Single
+ * glyph, not the old "中 / EN" pair which was ambiguous in both locales.
+ */
+const langLabel = computed(() => (locale.value === 'zh_CN' ? 'EN' : '中'))
+
+/**
+ * Pluralised "N tab(s)" label for the popup header. Resolves the count here
+ * rather than relying on vue-i18n's plural overload (whose composition-API
+ * signature is awkward and version-sensitive). The English message carries a
+ * `|` plural separator ("{count} tab | {count} tabs"); Chinese has no plural
+ * distinction so its message has no separator and is returned verbatim.
+ */
+const tabCountLabel = computed(() => {
+  const n = tabsStore.tabs.length
+  const raw = t('popup.tabCount', { count: n }) as string
+  const sep = raw.indexOf('|')
+  if (sep < 0) return raw // no plural distinction (e.g. Chinese)
+  return (n === 1 ? raw.slice(0, sep) : raw.slice(sep + 1)).trim()
+})
 
 function toggleLocale(): void {
   locale.value = locale.value === 'zh_CN' ? 'en' : 'zh_CN'
 }
 
 onMounted(() => {
-  tabsStore.startPolling()
+  tabsStore.startConnection()
 
   // Hydrate from the persisted popup locale (set by the user on a previous open).
   if (settings.locale) {
     locale.value = settings.locale
   }
-  refreshLangLabel()
+  // langLabel is computed from locale, so no manual refresh is needed when
+  // locale changes — Vue re-derives it.
 })
 
 watch(
@@ -56,7 +86,7 @@ watch(
 )
 
 onUnmounted(() => {
-  tabsStore.stopPolling()
+  tabsStore.stopConnection()
 })
 </script>
 
@@ -79,7 +109,7 @@ onUnmounted(() => {
       <!-- Now-playing tab list (whole-row click = A/B). -->
       <div class="tabs-head">
         <span class="lab">{{ t('popup.playing') }}</span>
-        <span class="n">{{ t('popup.tabCount', { count: tabsStore.tabs.length }) }}</span>
+        <span class="n">{{ tabCountLabel }}</span>
       </div>
       <TabList />
 
@@ -98,6 +128,17 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+
+      <!-- Collapsible diagnostics panel (log export), default hidden. Opens via
+           the footer 「Diagnostics」 text button. Shares the same grid-rows
+           collapse animation as the settings panel above for visual parity. -->
+      <div class="settings" :class="{ open: showDiagnostics }">
+        <div class="settings-inner">
+          <div class="panel-pad">
+            <Diagnostics ref="diagnosticsRef" />
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Footer: privacy/version/GitHub on the left, language + gear on the right. -->
@@ -111,14 +152,25 @@ onUnmounted(() => {
           rel="noopener noreferrer"
           :aria-label="t('footer.source')"
         >
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"
-            ><path
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+            <path
               d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.8 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 4.6 18 4.9 18 4.9c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.5-2.7 5.5-5.3 5.8.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"
-            /></svg>
-          </a>
+            />
+          </svg>
+        </a>
       </span>
       <div class="actions">
         <button class="ghost" type="button" @click="toggleLocale">{{ langLabel }}</button>
+        <button
+          class="ghost"
+          :class="{ active: showDiagnostics }"
+          type="button"
+          :aria-label="t('diagnostics.expand')"
+          :title="t('diagnostics.expand')"
+          @click="toggleDiagnostics"
+        >
+          {{ t('diagnostics.expand') }}
+        </button>
         <button
           class="icon-btn"
           :class="{ active: showSettings }"
@@ -127,10 +179,20 @@ onUnmounted(() => {
           :title="showSettings ? t('settings.collapse') : t('settings.expand')"
           @click="toggleSettings"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-            ><circle cx="12" cy="12" r="3"></circle><path
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="3"></circle>
+            <path
               d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-            ></path></svg>
+            ></path>
+          </svg>
         </button>
       </div>
     </footer>
@@ -340,6 +402,15 @@ body {
 }
 
 .icon-btn.active {
+  color: var(--honey);
+  border-color: var(--honey-2);
+  background: var(--honey-soft);
+}
+
+/* The diagnostics text-button's active state mirrors the icon-btn: honey text
+ * on a faint honey fill, so the open panel is signalled the same way as the
+ * open settings gear. */
+.ghost.active {
   color: var(--honey);
   border-color: var(--honey-2);
   background: var(--honey-soft);
