@@ -14,6 +14,24 @@
 // Shared value types
 // ---------------------------------------------------------------------------
 
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+/**
+ * A single diagnostic-log entry. Produced by the SW's logger ring buffer
+ * (`src/utils/logger.ts`) and surfaced to the popup via {@link GetLogsResponse}
+ * so users can copy warnings/errors when reporting an issue.
+ */
+export interface LogEntry {
+  /** Epoch milliseconds. */
+  ts: number
+  level: LogLevel
+  /** Origin realm/component, e.g. 'sw', 'audio'. */
+  scope: string
+  msg: string
+  /** Optional structured payload (already JSON-serializable; errors flattened). */
+  data?: unknown
+}
+
 export interface LufsReading {
   momentary: number
   shortTerm: number
@@ -39,6 +57,13 @@ export interface TabState {
   tabId: number
   title: string
   url: string
+  /**
+   * The tab's favicon URL, populated by the SW from `chrome.tabs` (the `tabs`
+   * permission exposes `tab.favIconUrl`). Empty when Chrome has none cached.
+   * The popup prefers this; when absent it falls back to the local `_favicon/`
+   * API keyed on the tab URL. Both paths are network-free.
+   */
+  favIconUrl?: string
   /** Whether the content script has successfully attached to a media element. */
   isCapturing: boolean
   shortTerm: number
@@ -65,6 +90,14 @@ export interface MediaAttachedMessage {
   tabId: number
   title: string
   url: string
+  /**
+   * Last gain (dB) the content script currently has applied on its GainNode.
+   * Echoed back on re-announce (PING recovery) so a SW that lost its in-memory
+   * `tabs` Map can seed `TabState.appliedGainDb` instead of defaulting to 0 dB
+   * — which would briefly blip the tab back to full volume. Optional: absent
+   * on first-ever attach (no gain applied yet) and from older content scripts.
+   */
+  appliedGainDb?: number
 }
 
 export interface LufsReportMessage {
@@ -72,6 +105,13 @@ export interface LufsReportMessage {
   tabId: number
   shortTerm: number
   blockCount: number
+  /**
+   * Last applied gain (dB) for the same recovery-seeding purpose as
+   * {@link MediaAttachedMessage.appliedGainDb}. Carried on every heartbeat so
+   * the SW's `LUFS_REPORT` cold-recovery branch (tab missing from the Map)
+   * also seeds the gain rather than resetting to 0 dB.
+   */
+  appliedGainDb?: number
 }
 
 export interface TabUnloadMessage {
@@ -148,12 +188,50 @@ export interface LimiterResponse {
   limiter: LimiterSettings
 }
 
+export interface GetLogsRequest {
+  type: 'GET_LOGS'
+}
+export interface GetLogsResponse {
+  entries: LogEntry[]
+}
+export interface ClearLogsRequest {
+  type: 'CLEAR_LOGS'
+}
+export interface ClearLogsResponse {
+  cleared: true
+}
+
 export type PopupToSwRequest =
   | GetStateRequest
   | SetTargetLufsRequest
   | SetEnabledRequest
   | ToggleBalanceRequest
   | SetLimiterRequest
+  | GetLogsRequest
+  | ClearLogsRequest
+
+// ---------------------------------------------------------------------------
+// SW → Popup (long-lived Port push, replaces 4 Hz GET_STATE polling)
+// ---------------------------------------------------------------------------
+
+/**
+ * A full snapshot of the SW's state, pushed down the popup Port whenever the
+ * SW's view of the world changes (after a balance pass, a setting change, a
+ * tab attach/detach, …). The popup binds its reactive refs directly to this,
+ * so the latency is one message round-trip (~10 Hz in steady state) instead
+ * of the old 250 ms poll interval.
+ */
+export interface StatePushMessage {
+  type: 'STATE_PUSH'
+  tabs: TabState[]
+  settings: Settings
+  limiter: LimiterSettings
+}
+
+/** Name of the popup ↔ SW long-lived Port (see background.ts onConnect). */
+export const POPUP_PORT_NAME = 'equalloud-popup'
+
+export type SwToPopupMessage = StatePushMessage
 
 // ---------------------------------------------------------------------------
 // Discriminated unions for the SW message router

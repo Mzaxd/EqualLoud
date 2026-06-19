@@ -19,6 +19,12 @@ export default defineManifest({
       '32': 'logo@32w.png',
     },
   },
+  // Standalone settings page — the CWS "Extension options" link opens this.
+  // Reuses the popup's stores + i18n so the two surfaces stay in sync.
+  options_ui: {
+    page: 'options.html',
+    open_in_tab: true,
+  },
   background: {
     service_worker: 'src/background.ts',
     type: 'module',
@@ -27,7 +33,13 @@ export default defineManifest({
   // is what makes EqualLoud truly automatic — no tabCapture, no activeTab, no
   // offscreen document, no user click required. host_permissions lets the
   // content script inject into every http(s) page.
-  permissions: ['storage', 'tabs', 'alarms'],
+  //
+  // `favicon` (Chrome 118+) serves tab favicons from Chrome's *local* cache
+  // via the `/_favicon/` virtual URL — zero network. Without it the popup
+  // would have to fetch each site's favicon over the network (the old
+  // google.com/s2/favicons path), which both leaked every open domain to a
+  // third party and contradicted the "no data leaves your device" promise.
+  permissions: ['storage', 'tabs', 'alarms', 'favicon'],
   host_permissions: ['<all_urls>'],
   content_scripts: [
     {
