@@ -24,6 +24,16 @@ export default defineConfig({
     crx({ manifest }),
     zipPack({ outDir: 'release', outFileName: 'release.zip' }),
   ],
+  build: {
+    rollupOptions: {
+      // onboarding.html is opened by the SW via chrome.runtime.getURL on first
+      // install, but CRXJS only emits HTML files declared in the manifest
+      // (popup/options). Register it as an explicit rollup input so it ships.
+      input: {
+        onboarding: resolve(__dirname, 'onboarding.html'),
+      },
+    },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version ?? '0.0.0'),
     __VUE_I18N_FULL_INSTALL__: true,

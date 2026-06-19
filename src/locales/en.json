@@ -3,7 +3,7 @@
     "title": "EqualLoud",
     "power": "Toggle loudness balancing",
     "playing": "Now playing",
-    "tabCount": "{count} tab(s)",
+    "tabCount": "{count} tab | {count} tabs",
     "status": {
       "balancing": "Balancing {count} tab(s)",
       "waiting": "Waiting for audio...",
@@ -106,5 +106,43 @@
   "updateNotice": {
     "text": "EqualLoud was updated. Refresh your playing tabs to restore balance.",
     "dismiss": "Dismiss"
+  },
+  "onboarding": {
+    "title": "EqualLoud",
+    "tagline": "Automatic loudness balance for every tab",
+    "step1Title": "Welcome",
+    "step1Body": "Open as many videos, podcasts, and music tabs as you like. EqualLoud keeps their loudness consistent — no more reaching for the volume knob on every switch.",
+    "step2Title": "Your privacy",
+    "step2Body": "EqualLoud needs access to all sites so it can reach their audio. Audio is processed entirely on your device — nothing is uploaded, collected, or tracked. See the privacy policy for details.",
+    "step3Title": "It just works",
+    "step3Body": "Balancing is on by default. Open a tab with audio and it evens out within a few seconds. Click the toolbar icon anytime to adjust the target or toggle per-tab.",
+    "getStarted": "Get started",
+    "next": "Next",
+    "back": "Back",
+    "privacyLink": "Privacy policy"
+  },
+  "options": {
+    "title": "EqualLoud · Settings",
+    "targetSection": "Target loudness",
+    "limiterSection": "Output limiter",
+    "localeSection": "Language",
+    "applyHint": "Changes apply to new playback immediately. Reload a tab to re-balance current audio.",
+    "reloadAll": "Reload all audio tabs",
+    "reloaded": "Reloaded",
+    "localeEn": "English",
+    "localeZh": "简体中文"
+  },
+  "diagnostics": {
+    "expand": "Diagnostics",
+    "collapse": "Close diagnostics",
+    "title": "Diagnostic Logs",
+    "subtitle": "Last {count} entries · warnings and errors",
+    "copy": "Copy logs",
+    "clear": "Clear",
+    "copied": "Copied {count} entries",
+    "empty": "No warnings or errors recorded",
+    "tooltip": {
+      "title": "Recent warnings and errors from the background service worker. Copy and share when reporting an issue — the SW's console history is lost on sleep, so this is the only way to capture a bug after the fact."
+    }
   }
 }
