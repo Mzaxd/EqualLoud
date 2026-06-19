@@ -11,6 +11,7 @@ import { BOOST_REPORT_HZ, BOOST_REPORT_MS, LUFS_REPORT_HZ } from '@/audio/config
 import type { SwToContentMessage } from '@/messages/protocol'
 
 import { attachAudioGraph, ensureContextAndUpgrade } from './audio-graph'
+import { patchHistoryApi } from './history-patch'
 import { MediaManager } from './media-manager'
 import { notifySw, onSwMessage } from './messenger'
 
@@ -32,13 +33,24 @@ if (document.querySelector('video, audio')) {
 }
 
 function startEqualLoud(): void {
-  const tabId = getTabId()
+  // Content scripts can't read their own tab id (it's not exposed to the page
+  // context). Every message we send carries this sentinel; the SW overwrites it
+  // with `sender.tab.id` on receipt. Kept as a named const for readability.
+  const TAB_ID_SENTINEL = -1
 
   const manager = new MediaManager((el) => attachAudioGraph(el))
 
   // Tracks the handle whose LUFS we report upstream.
   let lastShortTerm = -Infinity
   let lastBlockCount = 0
+  /**
+   * The most recent gain (dB) applied to this tab's GainNode(s), captured from
+   * `SET_GAIN`. Echoed back in `MEDIA_ATTACHED` / `LUFS_REPORT` so a SW that
+   * lost its in-memory `tabs` Map on sleep can seed `appliedGainDb` instead of
+   * defaulting to 0 dB — which would briefly blip the tab to full volume before
+   * the next heartbeat re-balances it. 0 (unity) until the first decision.
+   */
+  let lastAppliedGainDb = 0
   let hasPrimary = false
   let unsubLufs: (() => void) | null = null
   /**
@@ -68,9 +80,10 @@ function startEqualLoud(): void {
       }
       notifySw({
         type: 'MEDIA_ATTACHED',
-        tabId,
+        tabId: TAB_ID_SENTINEL,
         title: document.title,
         url: location.href,
+        appliedGainDb: lastAppliedGainDb,
       })
     }
   }
@@ -91,9 +104,10 @@ function startEqualLoud(): void {
     if (hasPrimary) {
       notifySw({
         type: 'LUFS_REPORT',
-        tabId,
+        tabId: TAB_ID_SENTINEL,
         shortTerm: lastShortTerm,
         blockCount: lastBlockCount,
+        appliedGainDb: lastAppliedGainDb,
       })
     }
     scheduleReport()
@@ -108,6 +122,7 @@ function startEqualLoud(): void {
         // computes one gain per tab, which is the right call for the main
         // player and harmless for incidental previews.
         for (const h of manager.getHandles()) h.setGain(msg.gainDb)
+        lastAppliedGainDb = msg.gainDb
         break
       case 'SET_CONFIG':
         // The SW sends config so newly-attached tabs pick up the current
@@ -118,8 +133,15 @@ function startEqualLoud(): void {
         for (const h of manager.getHandles()) h.setLimiter(msg.settings)
         break
       case 'PING':
-        // SW is checking we're alive. Re-announce so state rebuilds.
-        notifySw({ type: 'MEDIA_ATTACHED', tabId, title: document.title, url: location.href })
+        // SW is checking we're alive. Re-announce so state rebuilds. Carry the
+        // last applied gain so a recovering SW seeds it instead of 0 dB.
+        notifySw({
+          type: 'MEDIA_ATTACHED',
+          tabId: TAB_ID_SENTINEL,
+          title: document.title,
+          url: location.href,
+          appliedGainDb: lastAppliedGainDb,
+        })
         break
     }
   })
@@ -177,7 +199,7 @@ function startEqualLoud(): void {
     document.removeEventListener('play', handshake, { capture: true } as EventListenerOptions)
     window.removeEventListener('pagehide', onPageHide)
     restoreHistory()
-    notifySw({ type: 'TAB_UNLOAD', tabId })
+    notifySw({ type: 'TAB_UNLOAD', tabId: TAB_ID_SENTINEL })
     manager.stop()
   }
   window.addEventListener('pagehide', onPageHide)
@@ -186,52 +208,6 @@ function startEqualLoud(): void {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** The SW can't tell us our own tabId; we don't have it either. Use a stable
- *  per-page sentinel and let the SW key on the sender.tab.id it does know. */
-function getTabId(): number {
-  // sender.tab.id is authoritative on the SW side; from the content script we
-  // don't have it, so send -1 and rely on the SW to overwrite from sender.
-  return -1
-}
-
-/**
- * Wrap history.pushState/replaceState so SPA route changes fire our callback.
- * Idempotent: a marker on `history` prevents double-wrapping if the extension
- * is reloaded on an already-patched page (otherwise nav callbacks accumulate).
- * Returns a restore function that unwraps the originals.
- */
-function patchHistoryApi(onNav: () => void): () => void {
-  // Guard against re-patching on extension reload over an open tab.
-  const marker = Symbol.for('equalloudHistoryPatched')
-  const hist = history as unknown as Record<symbol, unknown>
-  if (hist[marker]) {
-    // Already patched by a previous injection; nothing to do, no-op restore.
-    return () => {}
-  }
-  hist[marker] = true
-  const origs: Record<'pushState' | 'replaceState', typeof history.pushState> = {
-    pushState: history.pushState,
-    replaceState: history.replaceState,
-  }
-  const wrap = (key: 'pushState' | 'replaceState') => {
-    history[key] = function patched(
-      ...args: Parameters<typeof history.pushState>
-    ): ReturnType<typeof history.pushState> {
-      const r = origs[key].apply(this, args)
-      try {
-        onNav()
-      } catch {
-        /* ignore */
-      }
-      return r
-    }
-  }
-  wrap('pushState')
-  wrap('replaceState')
-  return () => {
-    delete hist[marker]
-    history.pushState = origs.pushState
-    history.replaceState = origs.replaceState
-  }
-}
+// (The TAB_ID_SENTINEL constant and its rationale live at the top of
+// startEqualLoud, where it's first used. No module-level helpers remain — the
+// history-patch helper moved to ./history-patch.ts for testability.)

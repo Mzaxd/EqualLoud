@@ -1,0 +1,70 @@
+# CI: run on every push / pull request to main.
+# Gates: type-check → lint → unit tests → production build.
+# A green run here is the merge bar; the release workflow (release.yml) reuses
+# the same job for tag-driven builds.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs for the same ref when a new commit lands — keeps PR
+# feedback fast and saves runner minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: type-check · lint · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pin the pnpm version that the lockfile was generated with, so CI never
+      # drifts from local. setup-node reads packageManager below for the cache.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Matches the engines field in package.json (^20.19 || >=22.12) and
+          # the .tool-versions pin. setup-node's .tool-versions parser only
+          # recognises the `node` prefix, so we specify the major directly.
+          node-version: 22
+          cache: pnpm
+
+      # --frozen-lockfile: CI must fail if the lockfile is out of sync with
+      # package.json, rather than silently resolving a different tree.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm type-check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Build
+        run: pnpm build
+
+      # Upload the unpacked extension + the release zip so reviewers can pull a
+      # built artifact straight from a PR check (useful for QA on non-merged
+      # changes). Retained for 14 days.
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: equalloud-dist
+          path: |
+            dist
+            release
+          retention-days: 14

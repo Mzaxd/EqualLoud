@@ -1,0 +1,62 @@
+# Release: triggered by pushing a `v*` tag (e.g. `v1.1.0`).
+# Builds the extension, then publishes `release/release.zip` as a GitHub
+# Release asset. Does NOT auto-publish to the Chrome Web Store — that step is
+# intentionally manual (run chrome-webstore-upload-cli locally with secrets, or
+# add a later job that calls it with GitHub secrets once you're ready).
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # needed by softprops/action-gh-release to create the release
+
+jobs:
+  build:
+    name: Build & publish GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Full gate before publishing — never ship a build that doesn't pass.
+      - name: Verify (type-check + lint + test)
+        run: |
+          pnpm type-check
+          pnpm lint
+          pnpm test:unit
+
+      - name: Build
+        run: pnpm build
+
+      # Derive the release notes from the tag. CHANGELOG.md is the source of
+      # truth; if a section for this version exists it's used, otherwise the
+      # commit log since the last tag is the body.
+      - name: Extract version from tag
+        id: version
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release with release.zip
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release/release.zip
