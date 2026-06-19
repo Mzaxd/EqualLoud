@@ -13,9 +13,10 @@
  *
  * Colours are the honey token hues, pre-converted to sRGB hex (see below).
  */
-const sharp = require('sharp')
 const fs = require('node:fs')
 const path = require('node:path')
+
+const sharp = require('sharp')
 
 const OUT = path.resolve(__dirname, '..', 'public')
 
@@ -110,7 +111,9 @@ async function buildSource() {
   <path d="M1.5 14.5H23.5" stroke="${LINE}" stroke-width="1.8" stroke-linecap="round"/>
   <circle cx="12" cy="14.5" r="1.9" fill="${DOT}"/>
 </svg>`
-  await sharp(Buffer.from(svg)).png().toFile(path.join(OUT, 'icons', 'source.png'))
+  await sharp(Buffer.from(svg))
+    .png()
+    .toFile(path.join(OUT, 'icons', 'source.png'))
   console.log('  icons/source.png  512×512')
 }
 
