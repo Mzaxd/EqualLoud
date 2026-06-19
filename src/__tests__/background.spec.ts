@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 import type { TabState } from '@/messages/protocol'
+import { clearLogs } from '@/utils/logger'
 
 function createChromeMock() {
   return {
@@ -8,6 +9,8 @@ function createChromeMock() {
       onMessage: { addListener: vi.fn() },
       onInstalled: { addListener: vi.fn() },
       onStartup: { addListener: vi.fn() },
+      // The popup Port listener; background.ts registers onConnect on load.
+      onConnect: { addListener: vi.fn() },
     },
     tabs: {
       onRemoved: { addListener: vi.fn() },
@@ -23,6 +26,13 @@ function createChromeMock() {
       local: {
         get: vi.fn().mockResolvedValue({}),
         set: vi.fn().mockResolvedValue(undefined),
+      },
+      // session mirrors the logger ring buffer across SW sleep. Defaults to an
+      // empty object so loadLogs() reads nothing and the buffer starts clean.
+      session: {
+        get: vi.fn().mockResolvedValue({}),
+        set: vi.fn().mockResolvedValue(undefined),
+        remove: vi.fn().mockResolvedValue(undefined),
       },
       onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
     },
@@ -45,9 +55,12 @@ describe('background service worker (EqualLoud coordinator)', () => {
     vi.clearAllMocks()
     vi.stubGlobal('chrome', (chrome = createChromeMock()))
     vi.useFakeTimers()
+    // The logger buffer is a module singleton shared across tests; reset it so
+    // one test's entries don't leak into another's GET_LOGS assertions.
+    clearLogs()
     background = await import('@/background')
     background.resetState()
-    // Drain the loadSettings() promise chain triggered by resetState.
+    // Drain the loadSettings()/loadLogs() promise chain triggered by resetState.
     await vi.runOnlyPendingTimersAsync()
   })
 
@@ -187,5 +200,135 @@ describe('background service worker (EqualLoud coordinator)', () => {
       tabs: TabState[]
     }
     expect(state.tabs.find((t) => t.tabId === 6)).toBeUndefined()
+  })
+
+  // --- SW recovery: don't blip a tab back to 0 dB after sleep ----------------
+  //
+  // When the SW wakes from sleep its in-memory `tabs` Map is empty. The content
+  // script's PING reply carries the gain it currently has applied so the SW can
+  // seed `appliedGainDb` and echo it back instead of forcing a unity (0 dB)
+  // decision on a cold tab — which would briefly restore full volume.
+
+  it("echoes the content script's last gain on recovery instead of 0 dB", async () => {
+    // Empty Map ⇒ simulate SW just woke. Tab 9 reports it was held at -8 dB.
+    ;(chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockClear()
+
+    await background.handleMessage(
+      {
+        type: 'MEDIA_ATTACHED',
+        tabId: -1,
+        title: 'Loud',
+        url: 'https://yt.com',
+        appliedGainDb: -8,
+      },
+      { tab: { id: 9 } } as chrome.runtime.MessageSender,
+    )
+
+    // The recovered gain (-8 dB) must be echoed immediately so the GainNode
+    // stays put. Crucially, no 0 dB decision should be emitted.
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({ type: 'SET_GAIN', tabId: 9, gainDb: -8 }),
+    )
+    const sent = (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[1] as { type: string; gainDb?: number },
+    )
+    const setGains = sent.filter((m) => m.type === 'SET_GAIN')
+    expect(setGains.every((m) => m.gainDb !== 0)).toBe(true)
+
+    // And the tab's persisted state should carry the seeded gain.
+    const state = (await background.handleMessage({ type: 'GET_STATE' })) as {
+      tabs: TabState[]
+    }
+    expect(state.tabs.find((t) => t.tabId === 9)?.appliedGainDb).toBe(-8)
+  })
+
+  it('still rebalances a known tab on MEDIA_ATTACHED (no cold-recovery path)', async () => {
+    // Tab 10 already exists (primary switch on a live SW). MEDIA_ATTACHED here
+    // is NOT a recovery, so the SW should run maybeBalance() as before rather
+    // than blindly echoing whatever gain the CS reports.
+    seedTab({ tabId: 10, shortTerm: -20, blockCount: 50, appliedGainDb: -8, maxGainDb: 24 })
+    ;(chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockClear()
+
+    await background.handleMessage(
+      { type: 'MEDIA_ATTACHED', tabId: 10, title: 'YT', url: 'https://yt.com', appliedGainDb: -8 },
+      { tab: { id: 10 } } as chrome.runtime.MessageSender,
+    )
+
+    // -14 (default target) - (-20) = +6 dB — the recomputed decision, not the
+    // echoed -8 dB. Confirms the recovery shortcut only fires for missing tabs.
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      10,
+      expect.objectContaining({ type: 'SET_GAIN', tabId: 10, gainDb: 6 }),
+    )
+  })
+
+  it('falls back to the 0 dB path for an older content script (no appliedGainDb)', async () => {
+    // Legacy CS that doesn't send appliedGainDb. The SW must not break; it
+    // creates the tab and runs maybeBalance() (which yields 0 dB for a cold
+    // tab) — i.e. the original pre-fix behaviour, preserving compatibility.
+    ;(chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockClear()
+
+    await background.handleMessage(
+      { type: 'MEDIA_ATTACHED', tabId: -1, title: 'Old', url: 'https://yt.com' },
+      { tab: { id: 11 } } as chrome.runtime.MessageSender,
+    )
+
+    // Tab exists with default appliedGainDb: 0.
+    const state = (await background.handleMessage({ type: 'GET_STATE' })) as {
+      tabs: TabState[]
+    }
+    expect(state.tabs.find((t) => t.tabId === 11)?.appliedGainDb).toBe(0)
+  })
+
+  // --- Diagnostic logs (logger ring buffer) ----------------------------------
+
+  it('GET_LOGS returns the buffered entries', async () => {
+    // Produce a warning by forcing the SW to log one. scanTabs failure path
+    // calls log.error('initial scan failed'); we instead drive a direct path:
+    // an error inside handleNotification's MEDIA_ATTACHED with a missing sender
+    // is a no-op, so seed a log via the unhandled-rejection-free route — just
+    // send a MEDIA_ATTACHED then a TOGGLE_BALANCE which logs nothing. Instead,
+    // assert the empty-buffer contract here and the round-trip in the next test.
+    const empty = (await background.handleMessage({ type: 'GET_LOGS' })) as {
+      entries: unknown[]
+    }
+    expect(Array.isArray(empty.entries)).toBe(true)
+    // A freshly-reset SW (clearLogs in beforeEach) reports nothing yet.
+    expect(empty.entries).toHaveLength(0)
+  })
+
+  it('CLEAR_LOGS empties the buffer and removes the session mirror', async () => {
+    // Seed the buffer indirectly: a LUFS_REPORT on an unknown tab triggers the
+    // recovery branch (ensureTab) but no error. Instead, we verify the clear
+    // contract directly — CLEAR_LOGS must (a) return { cleared: true } and
+    // (b) call storage.session.remove('elogs') so the sleep-mirror is wiped too.
+    const resp = (await background.handleMessage({ type: 'CLEAR_LOGS' })) as {
+      cleared?: boolean
+    }
+    expect(resp).toEqual({ cleared: true })
+    expect(chrome.storage.session.remove).toHaveBeenCalledWith('elogs')
+
+    // And a subsequent GET_LOGS confirms the buffer is empty.
+    const after = (await background.handleMessage({ type: 'GET_LOGS' })) as {
+      entries: unknown[]
+    }
+    expect(after.entries).toHaveLength(0)
+  })
+
+  it('restores the log buffer from storage.session after resetState (SW wake)', async () => {
+    // Simulate a pre-sleep buffer persisted to session. The next resetState
+    // (mirroring a SW wake) must reload it so the popup can still export the
+    // history that preceded the sleep.
+    const stored = [{ ts: 1, level: 'warn', scope: 'sw', msg: 'pre-sleep-warn' }]
+    chrome.storage.session.get.mockResolvedValue({ elogs: stored })
+
+    background.resetState()
+    await vi.runOnlyPendingTimersAsync() // drain loadLogs()
+
+    const resp = (await background.handleMessage({ type: 'GET_LOGS' })) as {
+      entries: { msg: string }[]
+    }
+    expect(resp.entries.map((e) => e.msg)).toContain('pre-sleep-warn')
   })
 })

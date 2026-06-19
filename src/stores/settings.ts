@@ -38,6 +38,10 @@ export const useSettingsStore = defineStore(
       // {enabled,targetLufs} and vice versa.
       key: 'popupSettings',
       pick: ['locale', 'lastNoticeVersion'],
+      // The popup-local schema (locale + lastNoticeVersion) is structurally
+      // stable. The SW's settings/limiter are versioned via @/storage/migrate
+      // (see background.ts); if this store ever grows complex fields, apply the
+      // same pattern here.
     },
   },
 )
