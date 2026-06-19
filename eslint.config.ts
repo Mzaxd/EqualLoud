@@ -28,7 +28,20 @@ const config = defineConfigWithVueTs(
 )
 
 export default [
-  globalIgnores(['.pnpm-store', '.vite', 'node_modules', 'dist', 'release']),
+  globalIgnores([
+    '.pnpm-store',
+    '.vite',
+    'node_modules',
+    'dist',
+    'release',
+    // Standalone build scripts use CommonJS (sharp/fs in a .cjs context) — the
+    // no-require-import rule does not apply to them and they are not shipped.
+    'scripts/*.cjs',
+    'tools/*.mjs',
+    // Offline algorithm-tuning harness; dev-only, not shipped, has its own
+    // vitest config (vitest.eval.config.ts).
+    'eval/**',
+  ]),
   {
     languageOptions: {
       parserOptions: {

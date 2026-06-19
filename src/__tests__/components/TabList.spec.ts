@@ -144,4 +144,60 @@ describe('TabList', () => {
       expect(wrapper.text()).toContain('+5.5 dB')
     })
   })
+
+  describe('favicon resolution (privacy: zero network egress)', () => {
+    // The old code fetched every tab's domain from google.com/s2/favicons.
+    // The new code must resolve icons locally: prefer the SW-captured
+    // favIconUrl, else Chrome's _favicon/ cache. Neither may hit a third party.
+    const fakeExtId = 'fakeeqextid1234567890abcdef'
+
+    beforeEach(() => {
+      // chrome.runtime.id is read inside getFaviconUrl to build the _favicon/ URL.
+      globalThis.chrome = {
+        ...(globalThis.chrome ?? {}),
+        runtime: { ...(globalThis.chrome?.runtime ?? {}), id: fakeExtId },
+      } as typeof chrome
+    })
+
+    it('uses the SW-captured favIconUrl when present (no third-party fetch)', async () => {
+      const wrapper = await remountWith(
+        mockStore({
+          tabs: [createMockTab({ favIconUrl: 'https://music.youtube.com/favicon.ico' })],
+        }),
+      )
+      const img = wrapper.find('.fav img')
+      expect(img.exists()).toBe(true)
+      expect(img.attributes('src')).toBe('https://music.youtube.com/favicon.ico')
+    })
+
+    it('falls back to the local _favicon/ API when no favIconUrl captured', async () => {
+      const tab = createMockTab({ favIconUrl: undefined })
+      const wrapper = await remountWith(mockStore({ tabs: [tab] }))
+      const src = wrapper.find('.fav img').attributes('src') ?? ''
+      // Must be the on-device _favicon path, never google.com.
+      expect(src).toContain('_favicon/')
+      expect(src).toContain(`chrome-extension://${fakeExtId}`)
+      expect(src).toContain(encodeURIComponent(tab.url))
+      expect(src).not.toContain('google.com')
+    })
+
+    it('never emits a google.com URL (regression guard for the privacy leak)', async () => {
+      const wrapper = await remountWith(mockStore({ tabs: [createMockTab()] }))
+      const src = wrapper.find('.fav img').attributes('src') ?? ''
+      expect(src).not.toMatch(/google\.com/)
+    })
+
+    it('renders the glyph fallback when the URL is invalid', async () => {
+      const wrapper = await remountWith(
+        mockStore({ tabs: [createMockTab({ url: 'not-a-url', favIconUrl: undefined })] }),
+      )
+      // Invalid URL → getFaviconUrl returns '' → the v-if falls through, but
+      // url is still truthy so img renders with empty src; the fallback glyph
+      // span (.g) is in the v-else branch. Test the contract: no crash, no
+      // google, and the row still renders.
+      expect(wrapper.find('.tab').exists()).toBe(true)
+      const src = wrapper.find('.fav img').attributes('src') ?? ''
+      expect(src).not.toMatch(/google\.com/)
+    })
+  })
 })

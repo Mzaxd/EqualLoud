@@ -5,14 +5,66 @@ declare class AudioWorkletProcessor {
 }
 declare function registerProcessor(name: string, processorCtor: new () => unknown): void
 
-// Exact ITU-R BS.1770 K-weighting coefficients (as used in app runtime)
-const HIGH_SHELF_B: [number, number, number] = [
-  1.53512485958697, -2.69169618940638, 1.19839281085285,
-]
-const HIGH_SHELF_A: [number, number, number] = [1.0, -1.69065929318241, 0.73248077421585]
-const HIGH_PASS_B: [number, number, number] = [1.0, -2.0, 1.0]
-const HIGH_PASS_A: [number, number, number] = [1.0, -1.99004745483398, 0.99007225036621]
+/**
+ * K-weighting filter coefficients.
+ *
+ * ITU-R BS.1770 only publishes these for 48 kHz; the runtime AudioContext often
+ * runs at a different rate (44.1 kHz on macOS). We reverse-engineer the analog
+ * prototype (De Man 2018, via pyloudnorm) and re-discretise it via the bilinear
+ * transform in `designKWeighting()` (see `k-weighting.ts` in the app bundle).
+ *
+ * The worklet cannot import from the app bundle (it is fetched as a standalone
+ * module), so the design routine is inlined here and kept in sync with
+ * `src/audio/k-weighting.ts`. At 48 kHz both reproduce the exact ITU constants.
+ */
 
+// --- Inlined K-weighting design (mirror of src/audio/k-weighting.ts) ---------
+// Stage-1 (high-shelf) analog-prototype parameters.
+const HS_GAIN_DB = 3.99984385397
+const HS_Q = 0.7071752369554193
+const HS_FC = 1681.9744509555319
+// Stage-2 (high-pass) analog-prototype parameters.
+const HP_Q = 0.5003270373253953
+const HP_FC = 38.13547087613982
+
+interface Biquad {
+  b: readonly [number, number, number]
+  a: readonly [number, number, number]
+}
+
+function designHighShelf(fs: number): Biquad {
+  const k = Math.tan((Math.PI * HS_FC) / fs)
+  const vh = Math.pow(10, HS_GAIN_DB / 20)
+  const vb = Math.pow(vh, 0.499666774155)
+  const q = HS_Q
+  const a0 = 1 + k / q + k * k
+  return {
+    b: [
+      (vh + (vb * k) / q + k * k) / a0,
+      (2 * (k * k - vh)) / a0,
+      (vh - (vb * k) / q + k * k) / a0,
+    ],
+    a: [1, (2 * (k * k - 1)) / a0, (1 - k / q + k * k) / a0],
+  }
+}
+
+function designHighPass(fs: number): Biquad {
+  const k = Math.tan((Math.PI * HP_FC) / fs)
+  const q = HP_Q
+  const a0 = 1 + k / q + k * k
+  return { b: [1, -2, 1], a: [1, (2 * (k * k - 1)) / a0, (1 - k / q + k * k) / a0] }
+}
+
+function designKWeighting(sampleRate: number): { highShelf: Biquad; highPass: Biquad } {
+  // Clamp so the pre-warping tan() stays finite (f_c ≪ f_s/2). K-weighting has
+  // no meaningful variation above 192 kHz or below 8 kHz.
+  const fs = Math.max(8000, Math.min(192000, sampleRate))
+  return { highShelf: designHighShelf(fs), highPass: designHighPass(fs) }
+}
+
+// Channel weights for a stereo (2.0) signal. Per BS.1770-5 stereo L/R both
+// carry weight 1.0. Mono is handled in `process()` by NOT duplicating the
+// channel into both slots (see the mono-energy fix there).
 const CHANNEL_WEIGHTS: number[] = [1.0, 1.0] // Stereo
 
 const ABSOLUTE_THRESHOLD = -70.0
@@ -41,6 +93,23 @@ class LufsProcessor extends AudioWorkletProcessor {
    * a quarter) while cutting time-to-first-measurement from ~400 ms to ~200 ms.
    */
   readonly earlyBlockThreshold: number
+
+  // K-weighting coefficients for the current sample rate. Design at construction
+  // (see constructor); the process() loop reads them per-sample. Storing them as
+  // flat arrays keeps the hot loop allocation-free.
+  readonly hsB: readonly [number, number, number]
+  readonly hsA: readonly [number, number, number]
+  readonly hpB: readonly [number, number, number]
+  readonly hpA: readonly [number, number, number]
+  /**
+   * Whether the source is actually mono (only one input channel was delivered).
+   * When true the R processing branch is skipped entirely instead of feeding it
+   * a duplicate of L — duplicating would double the K-weighted energy and bias
+   * LUFS ~3 dB high for every mono source (most podcasts, many TikTok/Reels
+   * clips). Detected per-quantum in `process()` and cached here so the energy
+   * accumulation logic knows whether `sumSquares[1]` holds real data.
+   */
+  mono: boolean
 
   // Filter states (typed arrays)
   hs_x1: Float32Array
@@ -75,6 +144,15 @@ class LufsProcessor extends AudioWorkletProcessor {
     this.hopSizeSamples = Math.max(1, Math.floor(this.blockSizeSamples * (1 - overlap)))
     this.shortTermBlockCount = Math.ceil(3000 / (blockMs * (1 - overlap)))
     this.updateIntervalSamples = Math.max(128, Math.floor(0.1 * sr)) // ~10 Hz
+    // Design the K-weighting filters for THIS context's sample rate instead of
+    // using fixed 48 kHz coefficients. At 48 kHz the result is numerically
+    // identical to the old hard-coded constants; at 44.1 kHz it corrects a
+    // 0.3–0.7 LU drift that biased every gain decision. See k-weighting.ts.
+    const kw = designKWeighting(sr)
+    this.hsB = kw.highShelf.b
+    this.hsA = kw.highShelf.a
+    this.hpB = kw.highPass.b
+    this.hpA = kw.highPass.a
     // Emit early blocks once half the window has been accumulated. Clamped to
     // at least one hop so we never produce two early blocks from the same
     // quantum of samples.
@@ -101,6 +179,9 @@ class LufsProcessor extends AudioWorkletProcessor {
     this.samplesSinceLastBlock = 0
     this.samplesSinceLastUpdate = 0
     this.samplesAccumulated = 0
+    // Will be (re)detected on the first process() call from the actual input
+    // shape. Defaults to stereo; flipped to true if only one channel arrives.
+    this.mono = false
 
     this.blockLoudnesses = []
     this.shortTermBlocks = []
@@ -129,16 +210,32 @@ class LufsProcessor extends AudioWorkletProcessor {
       return true
     }
 
+    // Detect mono vs stereo from the actual channel count delivered this quantum.
+    // The audio graph in audio-graph.ts is wired for stereo (outputChannelCount
+    // [2]); for a genuine mono source Chrome delivers a single channel array and
+    // we must NOT process it twice — duplicating L into R would double the
+    // K-weighted energy and bias LUFS ~3 dB high (10·log10(2) ≈ 3.01).
     const inputL = input[0]
-    const inputR = input[1] ?? input[0] // Fallback to mono if missing right channel
-
-    if (!inputL) {
-      return true
-    }
-
+    if (!inputL) return true
+    const hasR = input.length >= 2 && input[1] && input[1]!.length > 0
+    this.mono = !hasR
     const left: Float32Array = inputL as Float32Array
-    const right: Float32Array = (inputR ?? inputL) as Float32Array
+    const right: Float32Array | null = hasR ? (input[1] as Float32Array) : null
     const frameCount = left.length
+
+    // Hoist the K-weighting coefficients out of the per-sample loop. At 48 kHz
+    // these are the exact ITU constants; at other rates they are the
+    // bilinear-transformed values from designKWeighting() (see file header).
+    const hsB0 = this.hsB[0]!,
+      hsB1 = this.hsB[1]!,
+      hsB2 = this.hsB[2]!
+    const hsA1 = this.hsA[1]!,
+      hsA2 = this.hsA[2]!
+    const hpB0 = this.hpB[0]!,
+      hpB1 = this.hpB[1]!,
+      hpB2 = this.hpB[2]!
+    const hpA1 = this.hpA[1]!,
+      hpA2 = this.hpA[2]!
 
     // Per-sample filtering and rolling window update
     for (let i = 0; i < frameCount; i++) {
@@ -147,21 +244,21 @@ class LufsProcessor extends AudioWorkletProcessor {
         const ch = 0
         const x = left[i] ?? 0
         const yHs =
-          HIGH_SHELF_B[0] * x +
-          HIGH_SHELF_B[1] * this.hs_x1[ch]! +
-          HIGH_SHELF_B[2] * this.hs_x2[ch]! -
-          HIGH_SHELF_A[1] * this.hs_y1[ch]! -
-          HIGH_SHELF_A[2] * this.hs_y2[ch]!
+          hsB0 * x +
+          hsB1 * this.hs_x1[ch]! +
+          hsB2 * this.hs_x2[ch]! -
+          hsA1 * this.hs_y1[ch]! -
+          hsA2 * this.hs_y2[ch]!
         this.hs_x2[ch] = this.hs_x1[ch]!
         this.hs_x1[ch] = x
         this.hs_y2[ch] = this.hs_y1[ch]!
         this.hs_y1[ch] = yHs
         const yHp =
-          HIGH_PASS_B[0] * yHs +
-          HIGH_PASS_B[1] * this.hp_x1[ch]! +
-          HIGH_PASS_B[2] * this.hp_x2[ch]! -
-          HIGH_PASS_A[1] * this.hp_y1[ch]! -
-          HIGH_PASS_A[2] * this.hp_y2[ch]!
+          hpB0 * yHs +
+          hpB1 * this.hp_x1[ch]! +
+          hpB2 * this.hp_x2[ch]! -
+          hpA1 * this.hp_y1[ch]! -
+          hpA2 * this.hp_y2[ch]!
         this.hp_x2[ch] = this.hp_x1[ch]!
         this.hp_x1[ch] = yHs
         this.hp_y2[ch] = this.hp_y1[ch]!
@@ -172,26 +269,28 @@ class LufsProcessor extends AudioWorkletProcessor {
         this.sumSquares[ch] = (this.sumSquares[ch] ?? 0) + (y2 - old)
         ringCh[this.ringIndex] = y2
       }
-      // Channel 1 (R)
-      {
+      // Channel 1 (R) — skipped for genuine mono sources to avoid the 3 dB
+      // doubling bug. sumSquares[1] stays at 0 and computeCurrentBlockLufs()
+      // divides by the effective channel count.
+      if (right !== null) {
         const ch = 1
         const x = right[i] ?? 0
         const yHs =
-          HIGH_SHELF_B[0] * x +
-          HIGH_SHELF_B[1] * this.hs_x1[ch]! +
-          HIGH_SHELF_B[2] * this.hs_x2[ch]! -
-          HIGH_SHELF_A[1] * this.hs_y1[ch]! -
-          HIGH_SHELF_A[2] * this.hs_y2[ch]!
+          hsB0 * x +
+          hsB1 * this.hs_x1[ch]! +
+          hsB2 * this.hs_x2[ch]! -
+          hsA1 * this.hs_y1[ch]! -
+          hsA2 * this.hs_y2[ch]!
         this.hs_x2[ch] = this.hs_x1[ch]!
         this.hs_x1[ch] = x
         this.hs_y2[ch] = this.hs_y1[ch]!
         this.hs_y1[ch] = yHs
         const yHp =
-          HIGH_PASS_B[0] * yHs +
-          HIGH_PASS_B[1] * this.hp_x1[ch]! +
-          HIGH_PASS_B[2] * this.hp_x2[ch]! -
-          HIGH_PASS_A[1] * this.hp_y1[ch]! -
-          HIGH_PASS_A[2] * this.hp_y2[ch]!
+          hpB0 * yHs +
+          hpB1 * this.hp_x1[ch]! +
+          hpB2 * this.hp_x2[ch]! -
+          hpA1 * this.hp_y1[ch]! -
+          hpA2 * this.hp_y2[ch]!
         this.hp_x2[ch] = this.hp_x1[ch]!
         this.hp_x1[ch] = yHs
         this.hp_y2[ch] = this.hp_y1[ch]!

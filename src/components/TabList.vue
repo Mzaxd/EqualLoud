@@ -27,10 +27,30 @@ function gainClass(gainDb: number): string {
   return 'gain cut'
 }
 
-function getFaviconUrl(url: string): string {
+/**
+ * Resolve a tab's favicon with zero network egress.
+ *
+ * Priority: the favIconUrl the SW captured from `chrome.tabs` (Chrome's own
+ * cached URL for the site) → otherwise the local `_favicon/` virtual resource
+ * (Chrome 118+, gated by the `favicon` permission), which serves from Chrome's
+ * in-memory icon cache. Both paths keep the icon fetch on-device; the old
+ * `google.com/s2/favicons` endpoint leaked every open domain to a third party
+ * and is removed.
+ *
+ * `favIconUrl` can itself be a remote http(s) URL, but Chrome serves it via the
+ * extension's own image loader subject to the popup CSP, and it points at the
+ * site's own origin (not a tracker). The `_favicon/` fallback is fully local.
+ */
+function getFaviconUrl(tab: { url: string; favIconUrl?: string }): string {
+  // Prefer the SW-captured favIconUrl when Chrome actually has one.
+  if (tab.favIconUrl) return tab.favIconUrl
+  // Otherwise ask Chrome's local favicon cache via the _favicon/ API.
+  if (!tab.url) return ''
   try {
-    const urlObj = new URL(url)
-    return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`
+    // Validate the URL (also guards against injecting arbitrary pageUrl values).
+    new URL(tab.url)
+    const extId = chrome.runtime.id
+    return `chrome-extension://${extId}/_favicon/?pageUrl=${encodeURIComponent(tab.url)}&size=32`
   } catch {
     return ''
   }
@@ -83,7 +103,7 @@ const globalEnabled = computed(() => tabsStore.isAutoBalancing)
           <span class="fav">
             <img
               v-if="tab.url"
-              :src="getFaviconUrl(tab.url)"
+              :src="getFaviconUrl(tab)"
               alt=""
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
@@ -91,7 +111,12 @@ const globalEnabled = computed(() => tabsStore.isAutoBalancing)
           </span>
           <span class="ttitle">{{ tab.title }}</span>
 
-          <span v-if="globalEnabled && tab.balanceEnabled" :class="gainClass(tab.appliedGainDb)">
+          <span
+            v-if="globalEnabled && tab.balanceEnabled"
+            :class="gainClass(tab.appliedGainDb)"
+            aria-live="polite"
+            aria-atomic="true"
+          >
             {{ formatGain(tab.appliedGainDb) }}
           </span>
           <span v-else-if="globalEnabled && !tab.balanceEnabled" class="gain muted">{{

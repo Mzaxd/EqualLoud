@@ -1,18 +1,14 @@
 /**
  * LUFS (Loudness Units Full Scale) calculation module
  * Implements ITU-R BS.1770-5 algorithm for integrated loudness measurement
+ *
+ * The K-weighting filter coefficients are designed for the runtime sample rate
+ * via `designKWeighting()` (see `./k-weighting.ts`), not hard-coded to 48 kHz.
+ * This corrects a latent drift on non-48 kHz AudioContexts (44.1 kHz is the
+ * macOS default) that biased every reading by 0.3–0.7 LU.
  */
 
-// K-weighting filter coefficients for 48kHz sample rate
-// Stage 1: High-shelf filter (+4dB at high frequencies)
-const HIGH_SHELF_B: [number, number, number] = [
-  1.53512485958697, -2.69169618940638, 1.19839281085285,
-]
-const HIGH_SHELF_A: [number, number, number] = [1.0, -1.69065929318241, 0.73248077421585]
-
-// Stage 2: High-pass filter (removes DC and sub-bass)
-const HIGH_PASS_B: [number, number, number] = [1.0, -2.0, 1.0]
-const HIGH_PASS_A: [number, number, number] = [1.0, -1.99004745483398, 0.99007225036621]
+import { designKWeighting } from './k-weighting'
 
 // Channel weights for surround (stereo uses only L/R at 1.0)
 const CHANNEL_WEIGHTS: Record<number, number[]> = {
@@ -56,6 +52,14 @@ export class LufsCalculator {
   private hopSizeSamples: number
   private channelWeights: number[]
 
+  // K-weighting coefficients designed for this instance's sample rate. At 48 kHz
+  // these are numerically identical to the old hard-coded ITU constants; at
+  // other rates they correct the frequency-response drift. See k-weighting.ts.
+  private highShelfB: readonly [number, number, number]
+  private highShelfA: readonly [number, number, number]
+  private highPassB: readonly [number, number, number]
+  private highPassA: readonly [number, number, number]
+
   // Filter states per channel (two stages)
   private highShelfStates: FilterState[]
   private highPassStates: FilterState[]
@@ -80,6 +84,15 @@ export class LufsCalculator {
     this.blockSizeSamples = Math.floor((blockMs / 1000) * this.sampleRate)
     this.hopSizeSamples = Math.floor(this.blockSizeSamples * (1 - overlap))
     this.shortTermBlockCount = Math.ceil(3000 / (blockMs * (1 - overlap)))
+
+    // Design the K-weighting filters for this sample rate. At 48 kHz the result
+    // matches the ITU constants to within 1e-12, so existing 48 kHz tests are
+    // unaffected; at 44.1 kHz it corrects the 0.3–0.7 LU drift.
+    const kw = designKWeighting(this.sampleRate)
+    this.highShelfB = kw.highShelf.b
+    this.highShelfA = kw.highShelf.a
+    this.highPassB = kw.highPass.b
+    this.highPassA = kw.highPass.a
 
     this.channelWeights =
       CHANNEL_WEIGHTS[this.channels] ?? (Array(this.channels).fill(1.0) as number[])
@@ -111,8 +124,8 @@ export class LufsCalculator {
    */
   private applyBiquad(
     x: number,
-    b: [number, number, number],
-    a: [number, number, number],
+    b: readonly [number, number, number],
+    a: readonly [number, number, number],
     state: FilterState,
   ): number {
     const y = b[0] * x + b[1] * state.x1 + b[2] * state.x2 - a[1] * state.y1 - a[2] * state.y2
@@ -141,9 +154,20 @@ export class LufsCalculator {
 
         if (!highShelfState || !highPassState || !channelBuffer) continue
 
-        // Apply K-weighting (high-shelf then high-pass)
-        const afterHighShelf = this.applyBiquad(sample, HIGH_SHELF_B, HIGH_SHELF_A, highShelfState)
-        const filtered = this.applyBiquad(afterHighShelf, HIGH_PASS_B, HIGH_PASS_A, highPassState)
+        // Apply K-weighting (high-shelf then high-pass) using the sample-rate-
+        // aware coefficients designed in the constructor.
+        const afterHighShelf = this.applyBiquad(
+          sample,
+          this.highShelfB,
+          this.highShelfA,
+          highShelfState,
+        )
+        const filtered = this.applyBiquad(
+          afterHighShelf,
+          this.highPassB,
+          this.highPassA,
+          highPassState,
+        )
 
         channelBuffer[this.bufferIndex] = filtered
       }
