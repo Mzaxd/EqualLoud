@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { BIG_GAIN_BADGE_DB } from '@/audio/config'
 import { useTabsStore, hasEnoughSamples } from '@/stores/tabs'
 
 /**
@@ -21,9 +22,10 @@ function formatGain(gainDb: number): string {
 }
 
 /** Tailwind-style class for the gain badge: big boost → bright honey, normal
- *  boost → honey, cut (attenuation) → cool blue. */
+ *  boost → honey, cut (attenuation) → cool blue. The "big" threshold lives in
+ *  config (BIG_GAIN_BADGE_DB) so it tracks the boost ceiling, not a magic 10. */
 function gainClass(gainDb: number): string {
-  if (gainDb >= 0) return Math.abs(gainDb) >= 10 ? 'gain big' : 'gain'
+  if (gainDb >= 0) return Math.abs(gainDb) >= BIG_GAIN_BADGE_DB ? 'gain big' : 'gain'
   return 'gain cut'
 }
 

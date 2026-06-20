@@ -6,6 +6,32 @@
  * via `designKWeighting()` (see `./k-weighting.ts`), not hard-coded to 48 kHz.
  * This corrects a latent drift on non-48 kHz AudioContexts (44.1 kHz is the
  * macOS default) that biased every reading by 0.3–0.7 LU.
+ *
+ * ── Role: OFFLINE REFERENCE IMPLEMENTATION ────────────────────────────────
+ * This class is NOT wired into the production audio path. Live loudness is
+ * measured by `src/worklets/lufs-processor.ts` (an AudioWorklet that runs on
+ * the audio thread). This class exists for three reasons — do NOT delete it:
+ *
+ *   1. **Golden-reference correctness.** `eval/measurement.spec.ts` checks
+ *      `LufsCalculator` against closed-form analytic truth values derived in
+ *      `eval/references.ts` (amplitude linearity, K-weighting frequency
+ *      response, absolute LUFS anchors). This is the ONLY place that pins down
+ *      *absolute* correctness of the meter — the worklet cannot be loaded in a
+ *      plain Node test, so it is checked against this class instead (parity),
+ *      and THIS class is checked against the maths.
+ *
+ *   2. **Worklet parity.** `src/__tests__/lufs-processor.spec.ts` feeds the
+ *      same signal through both implementations and asserts their outputs match,
+ *      proving the worklet's circular-buffer + early-block optimisations did
+ *      not alter the measurement.
+ *
+ *   3. **Offline tuning.** `eval/simulate.ts` + `eval/tune.ts` drive the
+ *      balance loop against synthetic audio via this class; the worklet's
+ *      real-time-only API can't be used in an offline sim.
+ *
+ * The worklet file inlines its own copy of the K-weighting design (worklets
+ * can't import the app bundle). If you change the algorithm here, change it
+ * there too — the parity test will fail loudly if they drift.
  */
 
 import { designKWeighting } from './k-weighting'

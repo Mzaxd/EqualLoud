@@ -141,6 +141,10 @@
     "clear": "清空",
     "copied": "已复制 {count} 条",
     "empty": "暂无警告或错误记录",
+    "report": "反馈问题",
+    "reportTitle": "[Bug] ",
+    "reportBody": "## 发生了什么\n\n<!-- 描述遇到的问题和你的预期。 -->\n\n## 环境信息\n\n- EqualLoud 版本:{version}\n- 浏览器:{browser}\n\n## 诊断日志\n\n<!-- 日志已复制到剪贴板,请粘贴到下方三个反引号之间(Cmd/Ctrl+V)。 -->\n\n```\n{logs}\n```\n",
+    "reportOpened": "已打开 issue 页面,请粘贴日志",
     "tooltip": {
       "title": "后台 Service Worker 近期的警告与错误。报问题时复制并附上——SW 休眠后控制台历史会丢失,这是事后排查 bug 的唯一途径。"
     }

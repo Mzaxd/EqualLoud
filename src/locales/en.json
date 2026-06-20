@@ -141,6 +141,10 @@
     "clear": "Clear",
     "copied": "Copied {count} entries",
     "empty": "No warnings or errors recorded",
+    "report": "Report issue",
+    "reportTitle": "[Bug] ",
+    "reportBody": "## What happened\n\n<!-- Describe the problem and what you expected instead. -->\n\n## Context\n\n- EqualLoud version: {version}\n- Browser: {browser}\n\n## Diagnostic logs\n\n<!-- The logs were copied to your clipboard — paste them between the triple backticks below (Cmd/Ctrl+V). -->\n\n```\n{logs}\n```\n",
+    "reportOpened": "Issue page opened — paste your logs there",
     "tooltip": {
       "title": "Recent warnings and errors from the background service worker. Copy and share when reporting an issue — the SW's console history is lost on sleep, so this is the only way to capture a bug after the fact."
     }
