@@ -1,8 +1,27 @@
 {
   "name": "equalloud",
   "version": "1.1.0",
-  "private": true,
+  "description": "Automatically balance loudness across every video/audio tab — install and forget.",
+  "keywords": [
+    "chrome-extension",
+    "loudness",
+    "lufs",
+    "audio",
+    "web-audio",
+    "volume-normalization",
+    "ebu-r128"
+  ],
   "license": "MIT",
+  "author": "mzaxd <https://github.com/mzaxd>",
+  "homepage": "https://github.com/mzaxd/EqualLoud",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mzaxd/EqualLoud.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mzaxd/EqualLoud/issues"
+  },
+  "private": true,
   "type": "module",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
