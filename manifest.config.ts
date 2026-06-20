@@ -9,7 +9,13 @@ import pkg from './package.json'
 export default defineManifest({
   manifest_version: 3,
   name: 'EqualLoud',
-  description: 'Automatically balance loudness across all video/audio tabs — install and forget.',
+  // Stays under the CWS 132-char limit. The privacy clause is intentional:
+  // EqualLoud's `host_permissions: <all_urls>` is a sensitive permission, and
+  // reviewers skim the description for a data-handling statement. Front-loading
+  // "100% on-device, nothing uploaded" short-circuits the most common reason a
+  // loudness extension gets bounced or sent to a slower review queue.
+  description:
+    'Automatically balance loudness across every audio/video tab. 100% on-device: no data is collected, uploaded, or tracked.',
   // Read from package.json directly rather than relying on the
   // `npm_package_version` env var that npm/pnpm inject only when the script is
   // launched through the package manager. A bare `vite build` (e.g. from an

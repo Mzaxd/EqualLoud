@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#1a1208" />
+    <title>Privacy Policy — EqualLoud</title>
+    <meta
+      name="description"
+      content="EqualLoud processes audio entirely on your device. No analytics, no telemetry, no servers."
+    />
+    <style>
+      :root {
+        --bg: #1a1208;
+        --bg-elev: #241a0e;
+        --fg: #f5ead7;
+        --fg-dim: #c9b89a;
+        --accent: #e0944a;
+        --accent-soft: rgba(224, 148, 74, 0.16);
+        --border: rgba(245, 234, 215, 0.12);
+        --ok: #7fb87a;
+        --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hanken Grotesk', Roboto,
+          Helvetica, Arial, sans-serif;
+        --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #fbf6ec;
+          --bg-elev: #ffffff;
+          --fg: #2a1f12;
+          --fg-dim: #6b5a44;
+          --accent: #b9682a;
+          --accent-soft: rgba(185, 104, 42, 0.1);
+          --border: rgba(42, 31, 18, 0.12);
+          --ok: #4a7a45;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font-sans);
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+      header {
+        padding: 3.5rem 1.5rem 2.5rem;
+        text-align: center;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, var(--accent-soft), transparent);
+      }
+      header .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4em;
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        margin-bottom: 1rem;
+      }
+      header h1 {
+        margin: 0 0 0.5rem;
+        font-family: var(--font-serif);
+        font-size: clamp(1.8rem, 4vw, 2.6rem);
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      header .effective {
+        color: var(--fg-dim);
+        font-size: 0.9rem;
+      }
+      header .tldr {
+        max-width: 640px;
+        margin: 1.5rem auto 0;
+        padding: 1rem 1.25rem;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg-elev);
+        font-size: 0.95rem;
+      }
+      header .tldr strong {
+        color: var(--ok);
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 2.5rem 1.5rem 4rem;
+      }
+      section {
+        margin-bottom: 2.5rem;
+        scroll-margin-top: 1.5rem;
+      }
+      h2 {
+        font-family: var(--font-serif);
+        font-size: 1.35rem;
+        font-weight: 600;
+        margin: 0 0 0.75rem;
+        padding-bottom: 0.4rem;
+        border-bottom: 1px solid var(--border);
+        color: var(--fg);
+      }
+      p {
+        margin: 0 0 1rem;
+      }
+      ul {
+        margin: 0 0 1rem;
+        padding-left: 1.3rem;
+      }
+      li {
+        margin-bottom: 0.4rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.5rem 0 1.5rem;
+        font-size: 0.92rem;
+        overflow: hidden;
+        border-radius: 8px;
+      }
+      th,
+      td {
+        padding: 0.7rem 0.9rem;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        background: var(--bg-elev);
+        font-weight: 600;
+        color: var(--fg);
+        white-space: nowrap;
+      }
+      td:first-child {
+        font-family: var(--font-mono, monospace);
+        font-size: 0.85rem;
+        white-space: nowrap;
+        color: var(--accent);
+      }
+      code {
+        font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85em;
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+        background: var(--accent-soft);
+      }
+      .no {
+        color: var(--ok);
+        font-weight: 600;
+      }
+      .toc {
+        background: var(--bg-elev);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 2.5rem;
+      }
+      .toc ol {
+        margin: 0;
+        padding-left: 1.4rem;
+      }
+      .toc li {
+        margin-bottom: 0.3rem;
+      }
+      .toc a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .toc a:hover {
+        text-decoration: underline;
+      }
+      a {
+        color: var(--accent);
+      }
+      footer {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem 3rem;
+        border-top: 1px solid var(--border);
+        color: var(--fg-dim);
+        font-size: 0.88rem;
+        text-align: center;
+      }
+      footer a {
+        color: var(--fg-dim);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="badge">🔒 No data leaves your device</span>
+      <h1>Privacy Policy</h1>
+      <p class="effective">EqualLoud · Effective date: 2026-06-18 · Version 1.1.0</p>
+      <div class="tldr">
+        <strong>EqualLoud processes audio entirely on your device.</strong> It does not
+        collect, transmit, or sell any personal data. There are no analytics, no
+        telemetry, no trackers, and no third-party servers involved in its operation.
+      </div>
+    </header>
+
+    <main>
+      <nav class="toc" aria-label="Contents">
+        <strong>Contents</strong>
+        <ol>
+          <li><a href="#what">What EqualLoud does</a></li>
+          <li><a href="#permissions">Permissions and why each is required</a></li>
+          <li><a href="#data">Data handling specifics</a></li>
+          <li><a href="#not">What EqualLoud does NOT do</a></li>
+          <li><a href="#children">Children's privacy</a></li>
+          <li><a href="#changes">Changes to this policy</a></li>
+          <li><a href="#source">Source code & contact</a></li>
+        </ol>
+      </nav>
+
+      <section id="what">
+        <h2>What EqualLoud does</h2>
+        <p>
+          EqualLoud is a browser extension that automatically balances the loudness of
+          audio/video tabs. It injects a content script into web pages so it can attach a
+          Web Audio graph to each <code>&lt;video&gt;</code> / <code>&lt;audio&gt;</code>
+          element, measure its loudness (using the ITU-R BS.1770 K-weighting algorithm),
+          and apply a gain adjustment so every tab converges to one target loudness.
+        </p>
+        <p><strong>All of this happens locally in your browser.</strong></p>
+      </section>
+
+      <section id="permissions">
+        <h2>Permissions and why each is required</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Permission</th>
+              <th>Why it's needed</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>host_permissions: &lt;all_urls&gt;</td>
+              <td>
+                So balancing works automatically on every site, without per-site
+                enablement. The content script must run on the page to reach its media
+                elements. <strong>No page content is read or transmitted</strong> — only
+                the audio stream is measured locally.
+              </td>
+            </tr>
+            <tr>
+              <td>tabs</td>
+              <td>
+                To list open tabs in the popup and show their titles. Tab titles and URLs
+                stay in local memory and are shown only to you in the popup.
+              </td>
+            </tr>
+            <tr>
+              <td>storage</td>
+              <td>
+                To remember your settings (target loudness, limiter config, UI locale)
+                across browser restarts. Stored only in
+                <code>chrome.storage.local</code> on your device.
+              </td>
+            </tr>
+            <tr>
+              <td>alarms</td>
+              <td>
+                A periodic housekeeping timer that prunes closed tabs and recovers state
+                after the service worker sleeps.
+              </td>
+            </tr>
+            <tr>
+              <td>favicon (Chrome 118+)</td>
+              <td>
+                Displays each tab's website icon in the popup. Served from Chrome's
+                <strong>local</strong> favicon cache via the
+                <code>_favicon/</code> API — no network request to the site or any third
+                party.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="data">
+        <h2>Data handling specifics</h2>
+        <ul>
+          <li>
+            <strong>Audio:</strong> Processed in real time by the browser's Web Audio
+            API. Audio samples are never stored, logged, or sent anywhere. The loudness
+            numbers exist only transiently in memory to drive the gain decision.
+          </li>
+          <li>
+            <strong>Tab information (title, URL, favicon):</strong> Held in the
+            extension's memory only while the popup is open or the service worker is
+            active. Not persisted, not transmitted.
+          </li>
+          <li>
+            <strong>Settings:</strong> Stored locally via
+            <code>chrome.storage.local</code>. Never leave your device.
+          </li>
+          <li>
+            <strong>Favicons:</strong> Before v1.1.0 the popup fetched favicons from
+            <code>google.com/s2/favicons</code>, which exposed the domains of your open
+            tabs to Google. <strong>This was removed in v1.1.0</strong> — favicons now
+            come from Chrome's local cache with zero network egress.
+          </li>
+        </ul>
+      </section>
+
+      <section id="not">
+        <h2>What EqualLoud does NOT do</h2>
+        <ul>
+          <li><span class="no">✓</span> No analytics or usage tracking.</li>
+          <li><span class="no">✓</span> No crash reporting that sends data off-device.</li>
+          <li><span class="no">✓</span> No advertising or ad SDKs.</li>
+          <li><span class="no">✓</span> No collection of personal information.</li>
+          <li><span class="no">✓</span> No communication with any server. The extension has no backend.</li>
+          <li><span class="no">✓</span> No sale or sharing of data with third parties.</li>
+        </ul>
+      </section>
+
+      <section id="children">
+        <h2>Children's privacy</h2>
+        <p>
+          EqualLoud does not knowingly collect any data from anyone, including children
+          under 13. It is a general-purpose utility with no audience-targeting features.
+        </p>
+      </section>
+
+      <section id="changes">
+        <h2>Changes to this policy</h2>
+        <p>
+          Material changes will be reflected in this file and noted in
+          <code>CHANGELOG.md</code>. The extension version (visible in the popup footer)
+          tracks the code this policy applies to.
+        </p>
+      </section>
+
+      <section id="source">
+        <h2>Source code &amp; contact</h2>
+        <p>
+          EqualLoud is open source. You can audit every claim above at
+          <a href="https://github.com/mzaxd/EqualLoud">github.com/mzaxd/EqualLoud</a>.
+          Open an issue there for any privacy questions.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        EqualLoud ·
+        <a href="https://github.com/mzaxd/EqualLoud">Source on GitHub</a> ·
+        <a href="https://github.com/mzaxd/EqualLoud/issues">Report an issue</a>
+      </p>
+    </footer>
+  </body>
+</html>
