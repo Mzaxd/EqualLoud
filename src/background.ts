@@ -231,10 +231,19 @@ async function balanceOnce(): Promise<void> {
   pushStateToPopups()
 }
 
-/** Balance if enabled and the throttle window has elapsed. Fire-and-forget. */
-function maybeBalance(): void {
+/**
+ * Balance if enabled and the throttle window has elapsed. Fire-and-forget.
+ *
+ * @param force Bypass the {@link BALANCE_THROTTLE_MS} throttle. Used by
+ *   user-initiated changes (target slider drag release, enable toggle, per-tab
+ *   A/B) where the user expects to hear the effect immediately — a 100 ms
+ *   throttle delay there reads as lag. Heartbeat-driven rebalances pass no
+ *   argument and stay throttled so a 10 Hz measurement stream doesn't run the
+ *   decision loop faster than ~10 Hz.
+ */
+function maybeBalance(force = false): void {
   const now = Date.now()
-  if (shouldThrottleBalance(lastBalanceMs, now)) return
+  if (!force && shouldThrottleBalance(lastBalanceMs, now)) return
   lastBalanceMs = now
   balanceOnce().catch((err) => log.error('balance failed', err))
 }
@@ -289,8 +298,7 @@ function handleGetState() {
 async function handleSetTargetLufs(targetLufs: number): Promise<{ settings: Settings }> {
   settings.targetLufs = Math.max(-60, Math.min(0, targetLufs))
   await persistSettings()
-  lastBalanceMs = 0 // force an immediate rebalance
-  maybeBalance()
+  maybeBalance(true)
   pushStateToPopups()
   return { settings }
 }
@@ -305,8 +313,7 @@ async function handleSetEnabled(enabled: boolean): Promise<{ settings: Settings 
       await sendToTab(t.tabId, { type: 'SET_GAIN', tabId: t.tabId, gainDb: 0 })
     }
   } else {
-    lastBalanceMs = 0
-    maybeBalance()
+    maybeBalance(true)
   }
   await updateBadge()
   pushStateToPopups()
@@ -319,8 +326,7 @@ async function handleToggleBalance(tabId: number): Promise<{ tabs: TabState[] }>
     t.balanceEnabled = !t.balanceEnabled
     // Force an immediate rebalance so the toggle is heard instantly: enabling
     // needs to push the computed gain, disabling needs to push unity.
-    lastBalanceMs = 0
-    maybeBalance()
+    maybeBalance(true)
     // maybeBalance is fire-and-forget; push the balanceEnabled flip now so the
     // popup's BYPASS/passthrough label updates without waiting for the gain pass.
     pushStateToPopups()
@@ -378,9 +384,10 @@ async function handleNotification(
         })
       } else {
         // Known tab (normal primary switch) or no gain reported (older CS):
-        // recompute and apply the current gain decision as before.
-        lastBalanceMs = 0
-        maybeBalance()
+        // recompute and apply the current gain decision immediately so the new
+        // primary's gain reflects the current target without waiting for a
+        // heartbeat (which would leave it at the stale value for ~100 ms).
+        maybeBalance(true)
       }
       await updateBadge()
       // A new tab appeared (or a known one re-announced) — push so the popup's
