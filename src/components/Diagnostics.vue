@@ -78,6 +78,54 @@ async function onClear(): Promise<void> {
   }
 }
 
+/**
+ * Open a pre-filled GitHub issue. The diagnostic logs are copied to the
+ * clipboard FIRST (a full log dump would blow past GitHub's ~8 KB URL limit),
+ * then the issue body carries a fenced placeholder the user pastes into.
+ * Keeps the loop short: one click → logs on clipboard → issue page with
+ * version + browser pre-filled → paste.
+ *
+ * Browser/version are sniffed here rather than in the SW because the SW has no
+ * access to `navigator.userAgent` and these strings are for the user's eyes,
+ * not collected by the extension.
+ */
+const REPORT_URL = 'https://github.com/mzaxd/EqualLoud/issues/new'
+
+async function onReport(): Promise<void> {
+  if (busy.value) return
+  busy.value = true
+  try {
+    // Copy logs first so the user can paste them straight into the issue body.
+    const text = await tabsStore.exportLogs()
+    const logs = text && text.length > 0 ? text : ''
+    const count = logs === '' ? 0 : logs.split('\n').length
+    try {
+      if (logs) await navigator.clipboard.writeText(logs)
+    } catch {
+      /* clipboard may be blocked; the user can still copy manually */
+    }
+    const version = __APP_VERSION__
+    const browser = navigator.userAgent
+    const body = t('diagnostics.reportBody', {
+      version,
+      browser,
+      // If the clipboard write succeeded, point the user at it; otherwise the
+      // fenced block stays empty and they can paste from the Copy button.
+      logs: count > 0 ? t('diagnostics.reportOpened') : '',
+    }) as string
+    const url = `${REPORT_URL}?title=${encodeURIComponent(t('diagnostics.reportTitle'))}&body=${encodeURIComponent(body)}`
+    // window.open from a click handler (user gesture) is allowed by Chrome's
+    // popup blocker. Falls back to a same-tab navigation if blocked.
+    if (window.open(url, '_blank', 'noopener,noreferrer') === null) {
+      window.location.href = url
+    }
+    showToast(count > 0 ? t('diagnostics.copied', { count }) : t('diagnostics.reportOpened'))
+    if (count > 0) entryCount.value = count
+  } finally {
+    busy.value = false
+  }
+}
+
 // Called by the parent when the panel is expanded, so the count is fresh each
 // time the user looks. Kept as a defineExpose hook rather than auto-running in
 // onMounted so we don't hit the SW when the panel is collapsed.
@@ -118,6 +166,15 @@ defineExpose({ refreshCount })
         @click="onClear"
       >
         {{ t('diagnostics.clear') }}
+      </button>
+      <button
+        class="ghost primary"
+        type="button"
+        :disabled="busy"
+        :title="t('diagnostics.report')"
+        @click="onReport"
+      >
+        {{ t('diagnostics.report') }}
       </button>
     </div>
 
@@ -164,6 +221,7 @@ defineExpose({ refreshCount })
 
 .diag-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
   margin-top: 14px;
 }
@@ -182,7 +240,8 @@ defineExpose({ refreshCount })
   cursor: pointer;
   transition:
     color 0.18s,
-    border-color 0.18s;
+    border-color 0.18s,
+    background 0.18s;
 }
 
 .diag-actions .ghost:hover:not(:disabled) {
@@ -193,6 +252,21 @@ defineExpose({ refreshCount })
 .diag-actions .ghost:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* The "Report issue" call-to-action is the one positive affordance in this
+ * panel — give it the honey accent so it reads as the suggested next step
+ * (the Copy/Clear buttons stay muted as secondary utilities). */
+.diag-actions .ghost.primary {
+  color: var(--honey);
+  border-color: var(--honey-2);
+  background: var(--honey-soft);
+}
+
+.diag-actions .ghost.primary:hover:not(:disabled) {
+  color: var(--honey);
+  border-color: var(--honey);
+  background: oklch(83% 0.118 76 / 0.24);
 }
 
 .diag-toast {

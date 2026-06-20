@@ -217,6 +217,12 @@ onUnmounted(() => {
 html,
 body,
 #app {
+  /* min-width rather than a fixed 348px: Chrome sizes the popup window to the
+   * body's width, so a fixed value cramped the layout on laptops running a
+   * 125–150 % system UI scale (the text overflowed its rows). min-width lets
+   * the body grow with the font when the OS scales up, while the fixed-width
+   * children below (which are designed against 348 px) still anchor the floor. */
+  min-width: 348px;
   width: 348px;
 }
 
@@ -227,11 +233,27 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Global keyboard-focus ring. Chrome's default outline is a thin blue line
+ * that all but vanishes on this dark amber theme, so keyboard users couldn't
+ * see where focus was. A 2 px honey outline matches the slider's focus style
+ * (AutoBalance.vue) and is consistent across every button in the popup. Only
+ * :focus-visible fires (not :focus), so mouse clicks don't show a ring —
+ * keeping the mouse path clean. */
+:focus-visible {
+  outline: 2px solid var(--honey);
+  outline-offset: 2px;
+}
+button:focus:not(:focus-visible) {
+  outline: none;
+}
 </style>
 
 <style scoped>
 .popup {
-  width: 348px;
+  /* Inherit the body's width (348 px floor, grows with OS UI scale). Was a
+   * hard 348 px which clipped content under 125–150 % system font scaling. */
+  min-width: 348px;
   background: linear-gradient(180deg, oklch(23% 0.015 52), var(--bg));
   overflow: hidden;
 }

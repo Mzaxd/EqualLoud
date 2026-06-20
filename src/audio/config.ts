@@ -23,6 +23,14 @@ export const DEFAULT_MAX_GAIN_DB = 12
 /** Per-tab minimum gain (slider floor). Effectively silence. */
 export const DEFAULT_MIN_GAIN_DB = -60
 
+/**
+ * Gain magnitude (dB) at/above which the popup badge switches to its "big
+ * boost" emphasis colour. Derived from {@link DEFAULT_MAX_GAIN_DB} (the boost
+ * ceiling) rather than being an independent magic number, so the two stay in
+ * step if the ceiling is re-tuned. Roughly "80% of the way to the ceiling".
+ */
+export const BIG_GAIN_BADGE_DB = Math.round(DEFAULT_MAX_GAIN_DB * 0.8)
+
 // ---------------------------------------------------------------------------
 // Auto-balance tuning (re-exported from balance.ts for single import site)
 // ---------------------------------------------------------------------------
