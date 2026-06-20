@@ -3,6 +3,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { TabState } from '@/messages/protocol'
 import { clearLogs } from '@/utils/logger'
 
+// Holds the onConnect callback background.ts registered at module load. Lives
+// at module scope (not inside createChromeMock) because beforeEach rebuilds the
+// chrome mock every test, yet background.ts is a cached module that only runs
+// its top-level onConnect.addListener once — so a per-mock capture would be
+// empty for every test after the first. Keeping it here gives every test a
+// stable handle to simulate a popup Port connecting.
+let onConnectHandler: ((port: unknown) => void) | undefined
+
 function createChromeMock() {
   return {
     runtime: {
@@ -10,7 +18,13 @@ function createChromeMock() {
       onInstalled: { addListener: vi.fn() },
       onStartup: { addListener: vi.fn() },
       // The popup Port listener; background.ts registers onConnect on load.
-      onConnect: { addListener: vi.fn() },
+      // addListener stashes the handler in the module-scope `onConnectHandler`
+      // so any test can simulate a popup connecting regardless of mock state.
+      onConnect: {
+        addListener: vi.fn((cb: (port: unknown) => void) => {
+          onConnectHandler = cb
+        }),
+      },
     },
     tabs: {
       onRemoved: { addListener: vi.fn() },
@@ -330,5 +344,63 @@ describe('background service worker (EqualLoud coordinator)', () => {
       entries: { msg: string }[]
     }
     expect(resp.entries.map((e) => e.msg)).toContain('pre-sleep-warn')
+  })
+
+  // --- Popup push: LUFS_REPORT must always stream to the popup ----------------
+  //
+  // Regression guard for the "live meter stays empty" bug. The popup's loudness
+  // meter binds to `tab.shortTerm`, whose ONLY continuous source is the ~10 Hz
+  // LUFS_REPORT heartbeat. pushStateToPopups() used to fire only at the tail of
+  // balanceOnce(), which maybeBalance() short-circuits whenever the
+  // BALANCE_THROTTLE_MS window (100 ms) hasn't elapsed — the SAME period as the
+  // heartbeat. So most reports updated shortTerm in memory but never reached the
+  // popup, freezing the meter (showed empty/black) until an untimed push (a
+  // setting change, MEDIA_ATTACHED) happened to arrive.
+
+  /** Build a fake popup Port and register it with the SW as if it just opened. */
+  function connectPopup(): {
+    port: { name: string; postMessage: ReturnType<typeof vi.fn> }
+    sent: () => { type: string }[]
+  } {
+    const port = {
+      name: 'equalloud-popup',
+      postMessage: vi.fn(),
+      onDisconnect: { addListener: vi.fn() },
+    }
+    // Use the module-scope handler captured at background.ts load time.
+    onConnectHandler!(port)
+    const sent = () => (port.postMessage as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])
+    return { port, sent }
+  }
+
+  it('pushes state to the popup on every LUFS_REPORT even when balance is throttled', async () => {
+    seedTab({ tabId: 12, shortTerm: -30, blockCount: 50, maxGainDb: 24 })
+    const { sent } = connectPopup()
+    // Drain the cold-start snapshot pushed on connect.
+    ;(chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockClear()
+    const initialPushCount = sent().length
+
+    // First report runs balance (not throttled) and pushes. balanceOnce() is
+    // fire-and-forget inside maybeBalance(), so await a microtask flush for its
+    // trailing pushStateToPopups() to land.
+    await background.handleMessage(
+      { type: 'LUFS_REPORT', tabId: 12, shortTerm: -25, blockCount: 51 },
+      { tab: { id: 12 } } as chrome.runtime.MessageSender,
+    )
+    await vi.runAllTimersAsync()
+    expect(sent().length).toBeGreaterThan(initialPushCount)
+
+    // Second report arrives within the 100 ms throttle window. balance is
+    // skipped, but the popup's meter must STILL see the fresh shortTerm —
+    // otherwise the live meter freezes (the reported bug).
+    const beforeSecond = sent().length
+    await background.handleMessage(
+      { type: 'LUFS_REPORT', tabId: 12, shortTerm: -18, blockCount: 52 },
+      { tab: { id: 12 } } as chrome.runtime.MessageSender,
+    )
+    await vi.runAllTimersAsync()
+    expect(sent().length).toBeGreaterThan(beforeSecond)
+    const lastPush = sent()[sent().length - 1] as unknown as { tabs: TabState[] }
+    expect(lastPush.tabs.find((t) => t.tabId === 12)?.shortTerm).toBe(-18)
   })
 })
