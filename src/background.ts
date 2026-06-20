@@ -411,6 +411,19 @@ async function handleNotification(
       t.shortTerm = message.shortTerm ?? -Infinity
       t.blockCount = message.blockCount ?? 0
       maybeBalance()
+      // Stream the fresh measurement to the popup regardless of whether
+      // maybeBalance() actually ran a pass. The balance throttle
+      // (BALANCE_THROTTLE_MS ≈ 100 ms) deliberately caps how often the
+      // gain-decision loop fires — that loop is expensive (it recomputes every
+      // tab's gain and broadcasts a SET_GAIN per tab). But the popup's live
+      // loudness meter binds to `tab.shortTerm`, and the LUFS heartbeat
+      // (~10 Hz) is the measurement's ONLY source. Tying the meter's push to
+      // the throttled balance path meant most heartbeats updated shortTerm in
+      // memory yet never reached the popup, so the meter appeared frozen/empty
+      // — only an untimed push (a setting change, MEDIA_ATTACHED) revived it.
+      // Pushing here is cheap (no-op when no popup is open) and keeps the meter
+      // live at the heartbeat rate.
+      pushStateToPopups()
       return
     }
     case 'TAB_UNLOAD': {
