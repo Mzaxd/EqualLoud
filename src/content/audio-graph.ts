@@ -61,6 +61,17 @@ export interface AudioGraphHandle {
   setLimiter(settings: LimiterSettings): void
   /** Subscribe to LUFS measurements (~LUFS_REPORT_HZ). Returns unsubscribe. */
   onLufs(cb: (u: LufsUpdate) => void): () => void
+  /**
+   * Reset the LUFS pipeline (block counter, K-weighting filter states, ring
+   * buffer, histories). Call when the element loads a new source (SPA video
+   * swap, Reels/TikTok next clip, ad insert) or when this element becomes the
+   * new primary — otherwise a warmed-up worklet keeps reporting stale block
+   * counts and a half-mixed ring buffer from the *previous* content, so the
+   * new clip's first few hundred ms read as "trusted" and drive the gain from
+   * a contaminated measurement. No-op on the volume-only fallback (no
+   * worklet) and safe to call before the worklet has loaded.
+   */
+  resetLufs(): void
   /** Tear everything down and release the element. */
   dispose(): void
 }
@@ -265,6 +276,12 @@ export function ensureContextAndUpgrade(): boolean {
  */
 export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null {
   if (attachedSources.has(el)) return null
+  // Claim the element up front so any concurrent attach for the same element
+  // short-circuits regardless of which internal path (web-audio vs volume
+  // fallback) this one ends up on. buildWebAudioHandle used to do this only on
+  // the successful createMediaElementSource branch, which left DRM/fallback
+  // elements un-marked and theoretically double-attachable via a direct call.
+  attachedSources.add(el)
 
   // Track active handles so the shared context can be closed when the extension
   // is invalidated and all elements have detached (see maybeCloseSharedContext).
@@ -327,6 +344,9 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
       lufsCbs.add(cb)
       return () => lufsCbs.delete(cb)
     },
+    resetLufs() {
+      current.resetLufs()
+    },
     dispose() {
       if (disposed) return
       disposed = true
@@ -365,7 +385,6 @@ function buildWebAudioHandle(
     // This can throw: InvalidStateError if the page already took the element,
     // or silent DRM-mute on protected content.
     source = ctx.createMediaElementSource(el)
-    attachedSources.add(el)
   } catch (err) {
     log.warn('createMediaElementSource failed; degrading to volume', err)
     return null
@@ -442,6 +461,17 @@ function buildWebAudioHandle(
     onLufs(cb) {
       lufsCbs.add(cb)
       return () => lufsCbs.delete(cb)
+    },
+    resetLufs() {
+      // The worklet may not have been wired up yet (async addModule). Guard so
+      // a reset racing the upgrade path can't throw into the audio thread.
+      if (worklet) {
+        try {
+          worklet.port.postMessage({ type: 'reset' })
+        } catch {
+          /* port closed mid-teardown — ignore */
+        }
+      }
     },
     dispose() {
       disposed = true
@@ -550,6 +580,9 @@ function makeVolumeFallback(el: HTMLMediaElement): AudioGraphHandle {
     onLufs() {
       /* no measurement in fallback mode */
       return () => {}
+    },
+    resetLufs() {
+      /* no worklet to reset in fallback mode */
     },
     dispose() {
       /* nothing to release */

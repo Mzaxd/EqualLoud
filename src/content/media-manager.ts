@@ -126,6 +126,16 @@ export class MediaManager {
   private readonly onMediaEvent = (ev: Event): void => {
     const el = ev.target as HTMLMediaElement | null
     if (!el || !this.handles.has(el)) return
+    // A new source loaded into an existing media element (SPA video swap,
+    // Reels/TikTok next clip, ad insert, …). The worklet's block counter, ring
+    // buffer and K-weighting states still reflect the PREVIOUS content; without
+    // a reset the new clip's first few hundred ms would be measured against a
+    // half-mixed window and reported as "trusted" (blockCount > 0), driving the
+    // gain from a contaminated reading. Reset BEFORE the repick so a primary
+    // change driven by loadstart (the common Reels case) sees a clean pipeline.
+    if (ev.type === 'loadstart' || ev.type === 'emptied') {
+      this.handles.get(el)?.resetLufs()
+    }
     // play/pause/durationchange/loadedmetadata all shift the primary scoring
     // (F4 weights !paused heavily; duration/videoWidth feed the tie-breakers).
     // A cheap repick — no DOM query, no attach/detach — so firing on every
@@ -264,6 +274,15 @@ export class MediaManager {
     const picked = pickPrimaryMedia(candidates)
     const next = picked ? picked.el : null
     if (next !== this.primary) {
+      // Before the new primary's loudness drives anything, reset its LUFS
+      // pipeline. A newly-promoted element was previously a non-primary (or a
+      // detached neighbour on a feed page): its worklet has been accumulating
+      // blocks against whatever it was playing before, and those stale readings
+      // would bleed into the first balance decisions after the switch. The
+      // loadstart/emptied handler above covers src swaps on the SAME element;
+      // this covers a switch BETWEEN elements. The volume-only fallback's
+      // resetLufs() is a no-op, so this is safe unconditionally.
+      if (next) this.handles.get(next)?.resetLufs()
       this.primary = next
       this.onPrimaryChange?.(next)
     }
@@ -283,4 +302,5 @@ const MEDIA_REPICK_EVENTS = [
   'durationchange',
   'loadedmetadata',
   'loadstart',
+  'emptied',
 ] as const
