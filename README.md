@@ -77,6 +77,15 @@ badge appears so it's obvious nothing is being balanced.
 
 ### 📦 Installation
 
+#### From a Release (easiest)
+
+1. Go to the [Releases page](https://github.com/mzaxd/EqualLoud/releases).
+2. Download **`release.zip`** from the latest release and unzip it.
+3. Open `chrome://extensions/` → enable **Developer mode** →
+   **Load unpacked** → select the unzipped `dist/` folder.
+
+Requires Chrome / Edge 120+.
+
 #### From source
 
 ```bash
@@ -139,6 +148,14 @@ pnpm build        # type-check + production build (dist/ + release/release.zip)
 - **自己合成音频**(没有媒体元素)的页面(罕见)不支持。
 
 ### 📦 安装
+
+#### 从 Release 下载(最简单)
+
+1. 打开 [Releases 页面](https://github.com/mzaxd/EqualLoud/releases)。
+2. 下载最新 Release 里的 **`release.zip`**,解压。
+3. 打开 `chrome://extensions/` → 开启**开发者模式** → **加载已解压的扩展程序** → 选解压出来的 `dist/` 文件夹。
+
+需要 Chrome / Edge 120+。
 
 #### 从源码
 

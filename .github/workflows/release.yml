@@ -3,6 +3,11 @@
 # Release asset. Does NOT auto-publish to the Chrome Web Store — that step is
 # intentionally manual (run chrome-webstore-upload-cli locally with secrets, or
 # add a later job that calls it with GitHub secrets once you're ready).
+#
+# The verify gate mirrors CI (ci.yml) exactly — type-check, lint, unit tests,
+# AND the LUFS accuracy (golden-reference) suite. A release must never pass a
+# weaker bar than a PR merge; the eval suite in particular catches K-weighting
+# regressions that unit tests miss.
 name: Release
 
 on:
@@ -36,26 +41,40 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Full gate before publishing — never ship a build that doesn't pass.
-      - name: Verify (type-check + lint + test)
-        run: |
-          pnpm type-check
-          pnpm lint
-          pnpm test:unit
+      # This MUST match CI: type-check → lint → unit → LUFS accuracy → build.
+      - name: Type-check
+        run: pnpm type-check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      # Golden-reference regression for the LUFS meter. See ci.yml for why this
+      # is a hard gate: it checks LufsCalculator against closed-form analytic
+      # truth (amplitude linearity, K-weighting response, absolute anchors),
+      # not against another internal implementation. A subtle K-weighting break
+      # passes unit tests but fails here.
+      - name: LUFS accuracy suite (golden reference)
+        run: pnpm test:eval
 
       - name: Build
         run: pnpm build
 
-      # Derive the release notes from the tag. CHANGELOG.md is the source of
-      # truth; if a section for this version exists it's used, otherwise the
-      # commit log since the last tag is the body.
       - name: Extract version from tag
         id: version
-        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+        # GITHUB_REF_NAME is the tag ("v1.1.0"); strip the leading "v" so we
+        # can build a clean RELEASE_NOTES-v1.1.0.md path below.
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release with release.zip
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ steps.version.outputs.tag }}
+          name: v${{ steps.version.outputs.version }}
+          # Prefer a curated RELEASE_NOTES-v<version>.md if present (richer than
+          # the auto-generated PR list); fall back to GitHub's auto notes.
+          body_path: RELEASE_NOTES-v${{ steps.version.outputs.version }}.md
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
