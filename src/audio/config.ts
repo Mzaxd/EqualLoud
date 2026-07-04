@@ -16,9 +16,15 @@ export const DEFAULT_TARGET_LUFS = -14
 /**
  * Per-tab maximum positive gain. Boosting quiet content toward the target is
  * desirable, but an unbounded boost amplifies the noise floor unpleasantly.
- * +12 dB covers typical streaming content while keeping hiss in check.
+ *
+ * +24 dB lets a −38 LUFS source reach the −14 streaming target — covering ASMR,
+ * quiet podcasts, and old recordings that +12 dB left inaudible. The output
+ * Protection limiter (−1 dBTP) is the safety net against clipping at high
+ * boost, so the only cost of a generous ceiling is more audible noise floor on
+ * genuinely quiet/low-quality sources, which is an acceptable trade-off
+ * (the user couldn't hear the content anyway).
  */
-export const DEFAULT_MAX_GAIN_DB = 12
+export const DEFAULT_MAX_GAIN_DB = 24
 
 /** Per-tab minimum gain (slider floor). Effectively silence. */
 export const DEFAULT_MIN_GAIN_DB = -60
@@ -97,13 +103,82 @@ export const DEFAULT_LIMITER_SETTINGS = {
   // old defaults and the optimizer's edge recommendation as a conservative
   // step: more responsive on transients than before, but not at the extreme.
   // Subject to A/B listening validation; revert if it sounds "pumped/squashed".
+  //
+  // 2.0: thresholdDb is now the user-facing "True-Peak Ceiling". Default
+  // lowered from −2 to −1 dBTP to align with EBU R128's delivery ceiling
+  // (EBU Tech 3341 §6.7). The other four params are no longer exposed in the
+  // UI — a professional review found them imperceptible for the
+  // DynamicsCompressorNode-based protection used here (it has a fixed ~6 ms
+  // lookahead and hidden makeup gain, so ratio/attack/release/knee tweaks are
+  // inaudible below the ceiling). They stay as fixed, tuner-validated values.
   enabled: true,
-  thresholdDb: -2,
+  thresholdDb: -1,
   kneeDb: 0,
   ratio: 20,
   attackMs: 0.7,
   releaseMs: 150,
 } as const
+
+// ---------------------------------------------------------------------------
+// Loudness presets (2.0)
+// ---------------------------------------------------------------------------
+
+/**
+ * The true-peak ceiling every preset uses. Aligns with EBU R128's −1 dBTP
+ * delivery spec — the value the broadcast/streaming industry has converged on.
+ * Kept constant across presets because the ceiling is about clipping safety,
+ * not loudness target, and there's no reason a "louder" preset should clip more.
+ */
+export const DEFAULT_CEILING_DBTP = -1
+
+/**
+ * A named loudness target + ceiling bundle. Selecting a preset sets the
+ * target LUFS (and optionally the ceiling) in one tap, so non-expert users get
+ * a correct, standards-aligned configuration without touching the slider.
+ *
+ * Every value here traces to a real, citable delivery standard — not a guess.
+ * The `sourceKey` carries a human-readable citation shown via the preset's "?"
+ * so users can verify the basis themselves (see the i18n `preset.sources.*`).
+ */
+export interface LoudnessPreset {
+  id: string
+  /** Target LUFS the balancer converges every tab toward. */
+  targetLufs: number
+  /** Display name key (i18n). */
+  labelKey: string
+  /** i18n key for the citation explaining WHERE this LUFS value comes from. */
+  sourceKey: string
+}
+
+/**
+ * The three built-in presets. Each target is a published industry value, not a
+ * guess — see `sourceKey` for the citation. The first entry is the factory
+ * default (matches {@link DEFAULT_TARGET_LUFS}).
+ *
+ * A "Loud" preset was considered and dropped: no major platform targets louder
+ * than −14 for music, and a "make it louder" button would work against this
+ * extension's purpose (which is to *normalise* loudness, not join the war).
+ */
+export const LOUDNESS_PRESETS: ReadonlyArray<LoudnessPreset> = [
+  {
+    id: 'streaming',
+    targetLufs: -14,
+    labelKey: 'preset.streaming',
+    sourceKey: 'preset.sources.streaming',
+  },
+  {
+    id: 'podcast',
+    targetLufs: -16,
+    labelKey: 'preset.podcast',
+    sourceKey: 'preset.sources.podcast',
+  },
+  {
+    id: 'broadcast',
+    targetLufs: -23,
+    labelKey: 'preset.broadcast',
+    sourceKey: 'preset.sources.broadcast',
+  },
+]
 
 // ---------------------------------------------------------------------------
 // Service-worker housekeeping

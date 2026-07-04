@@ -68,6 +68,27 @@ export interface TabState {
   isCapturing: boolean
   shortTerm: number
   blockCount: number
+  /**
+   * Momentary loudness (400 ms, ungated). Optional: absent until the worklet
+   * has enough samples and on legacy content scripts. Surfaced in Pro mode.
+   */
+  momentary?: number
+  /**
+   * Integrated loudness (BS.1770 gated). Optional: same conditions as
+   * {@link momentary}. Surfaced in Pro mode — the authoritative "how loud is
+   * this whole programme" figure (the one EBU R128 delivery specifies).
+   */
+  integrated?: number
+  /**
+   * True-peak level (dBTP), 4× oversampled per BS.1770. Optional: added in
+   * 2.0. Drives the Pro "clipping safety" indicator and the Protection ceiling.
+   */
+  truePeakDb?: number
+  /**
+   * Loudness Range (LU), EBU R128 LRA. Optional: added in 2.0. Surfaced in
+   * Pro mode as the "dynamic range" reading.
+   */
+  lra?: number
   /** Most recent gain the SW applied (dB). Displayed live in the popup. */
   appliedGainDb: number
   /** Per-tab positive gain ceiling. */
@@ -105,6 +126,28 @@ export interface LufsReportMessage {
   tabId: number
   shortTerm: number
   blockCount: number
+  /**
+   * Momentary loudness (400 ms block, ungated). The worklet has always
+   * computed this; 2.0 surfaces it for the Pro meter. Absent from legacy
+   * content scripts (treated as −Infinity / "not yet measured").
+   */
+  momentary?: number
+  /**
+   * Integrated loudness (gated, BS.1770 two-pass). The worklet has always
+   * computed this but 1.0 discarded it at the content-script boundary.
+   * 2.0 pipes it through. Absent from legacy content scripts.
+   */
+  integrated?: number
+  /**
+   * True-peak level (dBTP), 4× oversampled. Added in 2.0. Absent on legacy
+   * content scripts or before the worklet has seen any signal.
+   */
+  truePeakDb?: number
+  /**
+   * Loudness Range (LU), EBU R128 LRA over the recent short-term history.
+   * Added in 2.0. Absent on legacy content scripts.
+   */
+  lra?: number
   /**
    * Last applied gain (dB) for the same recovery-seeding purpose as
    * {@link MediaAttachedMessage.appliedGainDb}. Carried on every heartbeat so

@@ -48,9 +48,12 @@ export const useTabsStore = defineStore('tabs', () => {
     enabled: true,
     targetLufs: -14,
   })
+  // Fallback defaults mirror DEFAULT_LIMITER_SETTINGS (config.ts). The SW
+  // overrides these via the first STATE_PUSH, but they must match so the brief
+  // pre-push paint isn't wrong (2.0 lowered the ceiling default −2 → −1 dBTP).
   const limiter = ref<LimiterSettings>({
     enabled: true,
-    thresholdDb: -2,
+    thresholdDb: -1,
     kneeDb: 0,
     ratio: 20,
     attackMs: 0.7,

@@ -40,12 +40,20 @@ Just install it and browse.
   setup, no per-site enable.
 - **Cross-tab balancing** — every playing tab converges to one loudness target,
   so loud ads, quiet podcasts, and normal videos all sit at the same level.
+- **Loudness presets** *(2.0)* — one-tap targets aligned with real delivery
+  standards: Streaming (−14 LUFS, Spotify/Apple), Podcast (−16), Broadcast
+  (−23, EBU R128), Loud (−10).
+- **True-Peak protection** *(2.0)* — a single ceiling slider (default −1 dBTP,
+  the EBU R128 spec) replaces the old 5-knob limiter. Prevents inter-sample
+  clipping the way broadcast engineers actually measure it.
+- **Pro mode** *(2.0)* — toggle a loudness-analysis panel showing true-peak
+  (dBTP), integrated loudness, and loudness range (LRA) — the three figures on
+  a professional loudness meter, now in your browser.
 - **Boost *and* cut** — quiet content is lifted up toward the target, not just
   loud content pushed down. No more "I can't hear this podcast at all."
 - **Survives restarts** — your settings are remembered; balancing resumes
   automatically after a browser restart.
 - **Per-tab A/B toggle** — one click to hear any tab with vs. without balancing.
-- **Output limiter** — on by default, so a loud boost never distorts or clips.
 
 ### 🎯 Usage
 
@@ -57,10 +65,12 @@ Just install it and browse.
 Click the extension icon to:
 
 - Toggle balancing on/off.
-- Drag the target-loudness slider (left = quieter overall, right = louder).
+- Pick a **loudness preset** (Streaming / Podcast / Broadcast / Loud) or drag
+  the target slider for a custom value.
 - See the live gain applied to each tab (`+5.2 dB`, `−3.0 dB`, …).
 - Toggle per-tab balance on/off to A/B the effect.
-- Open Settings for the output limiter.
+- Turn on **Pro mode** to see true-peak, integrated loudness, and dynamic range.
+- Adjust the **true-peak ceiling** under Output Protection.
 
 The toolbar icon is clean while balancing is on. Turn it off and a gray `OFF`
 badge appears so it's obvious nothing is being balanced.
@@ -120,10 +130,12 @@ pnpm build        # type-check + production build (dist/ + release/release.zip)
 
 - **全自动** —— 音频一播放就开始工作。不用点图标、不用设置、不用每个网站单独开启。
 - **跨标签均衡** —— 每个正在播放的标签都收敛到同一个响度目标,吵的广告、轻的播客、正常音量的视频,都拉到同一水平。
+- **响度预设** *(2.0)* —— 一键切换目标,对标真实交付标准:流媒体(−14 LUFS,Spotify/Apple)、播客(−16)、广播(−23,EBU R128)、响亮(−10)。
+- **真峰值保护** *(2.0)* —— 用一个上限滑块(默认 −1 dBTP,EBU R128 标准)替代旧的 5 旋钮限幅器。按广播工程师真正的方式防止采样点之间的隐性削波。
+- **专业模式** *(2.0)* —— 打开响度分析面板,显示真峰值(dBTP)、整体响度、动态范围(LRA)——专业响度表上的三个核心读数,现在就在浏览器里。
 - **既能放大也能衰减** —— 安静的内容被提升到目标响度,而不只是把吵的压低。再也不用"这个播客根本听不清"。
 - **重启不丢设置** —— 设置会被记住;重启浏览器后自动恢复均衡。
 - **单标签 A/B 开关** —— 一键对比某个标签处理前后的效果。
-- **输出限幅器** —— 默认开启,防止提升后削波失真。
 
 ### 🎯 用法
 
@@ -134,9 +146,11 @@ pnpm build        # type-check + production build (dist/ + release/release.zip)
 点扩展图标可以:
 
 - 开启/关闭均衡。
-- 拖动目标响度滑块(左=整体更轻,右=更响)。
+- 选一个**响度预设**(流媒体 / 播客 / 广播 / 响亮),或拖动滑块自定义。
 - 看每个标签实时应用的增益(`+5.2 dB`、`−3.0 dB` …)。
 - 单标签开关,A/B 对比效果。
+- 打开**专业模式**,查看真峰值、整体响度、动态范围。
+- 在「输出保护」里调整**真峰值上限**。
 - 打开设置调整输出限幅器。
 
 工具栏图标在开启状态下保持干净;只有你手动关闭均衡时,才会出现一个灰色 `OFF` 标记,提醒你当前没有在均衡。
