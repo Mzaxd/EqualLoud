@@ -102,14 +102,13 @@ jobs:
           name: release-zip
           path: release
 
+      # Upload via chrome-webstore-upload-cli (fregante). The CLI uploads the zip
+      # and submits it for review in one step. It does NOT go live until Google
+      # approves — "publish" here means "submit as a new version".
       - name: Upload to Chrome Web Store
-        uses: mchm/release-chrome-extension@v2
-        with:
-          extension-id: ${{ secrets.CWS_EXTENSION_ID }}
-          client-id: ${{ secrets.CWS_CLIENT_ID }}
-          client-secret: ${{ secrets.CWS_CLIENT_SECRET }}
-          refresh-token: ${{ secrets.CWS_REFRESH_TOKEN }}
-          file: release/release.zip
-          # Publish as a draft for review — does NOT make it live until Google
-          # approves. Set to true once you trust the auto-publish flow.
-          publish: false
+        env:
+          EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: npx chrome-webstore-upload upload --source release/release.zip --auto-publish
