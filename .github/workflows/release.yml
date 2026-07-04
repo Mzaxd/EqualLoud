@@ -1,8 +1,10 @@
-# Release: triggered by pushing a `v*` tag (e.g. `v1.1.0`).
-# Builds the extension, then publishes `release/release.zip` as a GitHub
-# Release asset. Does NOT auto-publish to the Chrome Web Store — that step is
-# intentionally manual (run chrome-webstore-upload-cli locally with secrets, or
-# add a later job that calls it with GitHub secrets once you're ready).
+# Release: triggered by pushing a `v*` tag (e.g. `v2.0.0`).
+# Builds the extension, publishes release/release.zip as a GitHub Release asset,
+# AND auto-uploads to the Chrome Web Store (publishing a new version for review).
+#
+# CWS upload uses 4 secrets (Settings → Secrets → Actions):
+#   CWS_EXTENSION_ID, CWS_CLIENT_ID, CWS_CLIENT_SECRET, CWS_REFRESH_TOKEN
+# See CONTRIBUTING / onboarding docs for how to obtain them.
 #
 # The verify gate mirrors CI (ci.yml) exactly — type-check, lint, unit tests,
 # AND the LUFS accuracy (golden-reference) suite. A release must never pass a
@@ -54,7 +56,7 @@ jobs:
       # Golden-reference regression for the LUFS meter. See ci.yml for why this
       # is a hard gate: it checks LufsCalculator against closed-form analytic
       # truth (amplitude linearity, K-weighting response, absolute anchors),
-      # not against another internal implementation. A subtle K-weighting break
+      # not against another implementation. A subtle K-weighting break
       # passes unit tests but fails here.
       - name: LUFS accuracy suite (golden reference)
         run: pnpm test:eval
@@ -64,18 +66,50 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        # GITHUB_REF_NAME is the tag ("v1.1.0"); strip the leading "v" so we
-        # can build a clean RELEASE_NOTES-v1.1.0.md path below.
+        # GITHUB_REF_NAME is the tag ("v2.0.0"); strip the leading "v" so we
+        # can build a clean RELEASE_NOTES-v2.0.0.md path below.
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release with release.zip
         uses: softprops/action-gh-release@v2
         with:
           name: v${{ steps.version.outputs.version }}
-          # Prefer a curated RELEASE_NOTES-v<version>.md if present (richer than
+          # Prefer a curated RELEASE_NOTES-V<version>.md if present (richer than
           # the auto-generated PR list); fall back to GitHub's auto notes.
           body_path: RELEASE_NOTES-v${{ steps.version.outputs.version }}.md
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
             release/release.zip
+
+      # Upload the artifact so the publish-cws job can fetch it without rebuilding.
+      - name: Upload release.zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-zip
+          path: release/release.zip
+
+  publish-cws:
+    name: Publish to Chrome Web Store
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 5
+
+    steps:
+      - name: Download release.zip
+        uses: actions/download-artifact@v4
+        with:
+          name: release-zip
+          path: release
+
+      - name: Upload to Chrome Web Store
+        uses: mchm/release-chrome-extension@v2
+        with:
+          extension-id: ${{ secrets.CWS_EXTENSION_ID }}
+          client-id: ${{ secrets.CWS_CLIENT_ID }}
+          client-secret: ${{ secrets.CWS_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CWS_REFRESH_TOKEN }}
+          file: release/release.zip
+          # Publish as a draft for review — does NOT make it live until Google
+          # approves. Set to true once you trust the auto-publish flow.
+          publish: false
