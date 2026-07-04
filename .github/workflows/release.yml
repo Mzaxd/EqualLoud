@@ -102,13 +102,48 @@ jobs:
           name: release-zip
           path: release
 
-      # Upload via chrome-webstore-upload-cli (fregante). The CLI uploads the zip
-      # and submits it for review in one step. It does NOT go live until Google
-      # approves — "publish" here means "submit as a new version".
+      # Upload to Chrome Web Store via the official Publish API (no third-party
+      # CLI — just curl). Three steps: refresh the access token, upload the zip,
+      # then publish. The "publish" call submits the new version for Google
+      # review; it does NOT go live until approved.
       - name: Upload to Chrome Web Store
         env:
           EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
           CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-        run: npx chrome-webstore-upload-cli upload --source release/release.zip --auto-publish
+        run: |
+          set -e
+          # 1. Exchange refresh token for an access token.
+          TOKEN=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=$CLIENT_ID" \
+            -d "client_secret=$CLIENT_SECRET" \
+            -d "refresh_token=$REFRESH_TOKEN" \
+            -d "grant_type=refresh_token" | jq -r '.access_token')
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "❌ Failed to obtain access token"
+            exit 1
+          fi
+          echo "✅ Access token obtained"
+
+          # 2. Upload the zip.
+          UPLOAD=$(curl -s -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "x-goog-api-version: 2" \
+            -T "release/release.zip" \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID")
+          echo "Upload response: $UPLOAD"
+          STATE=$(echo "$UPLOAD" | jq -r '.uploadState')
+          if [ "$STATE" = "FAILURE" ]; then
+            echo "❌ Upload failed: $(echo "$UPLOAD" | jq -r '.itemError[0].errorDetail')"
+            exit 1
+          fi
+          echo "✅ Uploaded (state: $STATE)"
+
+          # 3. Publish — submit the new version for review.
+          PUB=$(curl -s -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID/publish")
+          echo "Publish response: $PUB"
