@@ -2,8 +2,10 @@
 # Builds the extension, publishes release/release.zip as a GitHub Release asset,
 # AND auto-uploads to the Chrome Web Store (publishing a new version for review).
 #
-# CWS upload uses 4 secrets (Settings → Secrets → Actions):
-#   CWS_EXTENSION_ID, CWS_CLIENT_ID, CWS_CLIENT_SECRET, CWS_REFRESH_TOKEN
+# CWS upload uses chrome-webstore-upload-cli (fregante) with 5 secrets
+# (Settings → Secrets → Actions):
+#   CWS_EXTENSION_ID, CWS_CLIENT_ID, CWS_CLIENT_SECRET,
+#   CWS_REFRESH_TOKEN, CWS_PUBLISHER_ID
 # See CONTRIBUTING / onboarding docs for how to obtain them.
 #
 # The verify gate mirrors CI (ci.yml) exactly — type-check, lint, unit tests,
@@ -102,60 +104,15 @@ jobs:
           name: release-zip
           path: release
 
-      # Upload to Chrome Web Store via the official Publish API (no third-party
-      # CLI — just curl). Three steps: refresh the access token, upload the zip,
-      # then publish. The "publish" call submits the new version for Google
-      # review; it does NOT go live until approved.
+      # Upload + publish via chrome-webstore-upload-cli (fregante, 497 stars,
+      # actively maintained). Handles OAuth token refresh, IN_PROGRESS polling,
+      # retries, and error reporting. The upload submits the new version for
+      # Google review; it does NOT go live until approved.
       - name: Upload to Chrome Web Store
         env:
           EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
           CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-        run: |
-          set -e
-          # 1. Exchange refresh token for an access token.
-          TOKEN=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
-            -d "client_id=$CLIENT_ID" \
-            -d "client_secret=$CLIENT_SECRET" \
-            -d "refresh_token=$REFRESH_TOKEN" \
-            -d "grant_type=refresh_token" | jq -r '.access_token')
-          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-            echo "❌ Failed to obtain access token"
-            exit 1
-          fi
-          echo "✅ Access token obtained"
-
-          # 2. Upload the zip (PUT to update an existing item; needs ?uploadType=media).
-          UPLOAD=$(curl -s -X PUT \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "x-goog-api-version: 2" \
-            -T "release/release.zip" \
-            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID?uploadType=media")
-          echo "Upload response: $UPLOAD"
-          # Check for API-level errors first (403 accessNotConfigured, etc.)
-          ERR=$(echo "$UPLOAD" | jq -r '.error.message // empty')
-          if [ -n "$ERR" ]; then
-            echo "❌ Upload failed: $ERR"
-            exit 1
-          fi
-          STATE=$(echo "$UPLOAD" | jq -r '.uploadState // empty')
-          if [ "$STATE" = "FAILURE" ]; then
-            echo "❌ Upload failed: $(echo "$UPLOAD" | jq -r '.itemError[0].errorDetail')"
-            exit 1
-          fi
-          echo "✅ Uploaded (state: ${STATE:-OK})"
-
-          # 3. Publish — submit the new version for review.
-          PUB=$(curl -s -X POST \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "x-goog-api-version: 2" \
-            -H "Content-Length: 0" \
-            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID/publish")
-          echo "Publish response: $PUB"
-          PUB_ERR=$(echo "$PUB" | jq -r '.error.message // empty')
-          if [ -n "$PUB_ERR" ]; then
-            echo "❌ Publish failed: $PUB_ERR"
-            exit 1
-          fi
-          echo "✅ Published — new version submitted for review"
+          PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: npx chrome-webstore-upload-cli@4 upload --source release/release.zip --auto-publish
