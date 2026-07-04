@@ -126,12 +126,12 @@ jobs:
           fi
           echo "✅ Access token obtained"
 
-          # 2. Upload the zip.
-          UPLOAD=$(curl -s -X POST \
+          # 2. Upload the zip (PUT to update an existing item; needs ?uploadType=media).
+          UPLOAD=$(curl -s -X PUT \
             -H "Authorization: Bearer $TOKEN" \
             -H "x-goog-api-version: 2" \
             -T "release/release.zip" \
-            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID")
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID?uploadType=media")
           echo "Upload response: $UPLOAD"
           STATE=$(echo "$UPLOAD" | jq -r '.uploadState')
           if [ "$STATE" = "FAILURE" ]; then
