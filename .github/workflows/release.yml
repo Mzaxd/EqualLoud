@@ -133,12 +133,18 @@ jobs:
             -T "release/release.zip" \
             "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID?uploadType=media")
           echo "Upload response: $UPLOAD"
-          STATE=$(echo "$UPLOAD" | jq -r '.uploadState')
+          # Check for API-level errors first (403 accessNotConfigured, etc.)
+          ERR=$(echo "$UPLOAD" | jq -r '.error.message // empty')
+          if [ -n "$ERR" ]; then
+            echo "❌ Upload failed: $ERR"
+            exit 1
+          fi
+          STATE=$(echo "$UPLOAD" | jq -r '.uploadState // empty')
           if [ "$STATE" = "FAILURE" ]; then
             echo "❌ Upload failed: $(echo "$UPLOAD" | jq -r '.itemError[0].errorDetail')"
             exit 1
           fi
-          echo "✅ Uploaded (state: $STATE)"
+          echo "✅ Uploaded (state: ${STATE:-OK})"
 
           # 3. Publish — submit the new version for review.
           PUB=$(curl -s -X POST \
@@ -147,3 +153,9 @@ jobs:
             -H "Content-Length: 0" \
             "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID/publish")
           echo "Publish response: $PUB"
+          PUB_ERR=$(echo "$PUB" | jq -r '.error.message // empty')
+          if [ -n "$PUB_ERR" ]; then
+            echo "❌ Publish failed: $PUB_ERR"
+            exit 1
+          fi
+          echo "✅ Published — new version submitted for review"
