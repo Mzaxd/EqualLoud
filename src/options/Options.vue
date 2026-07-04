@@ -2,7 +2,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import Limiter from '@/components/Limiter.vue'
 import { useDebouncedCallback } from '@/composables/useDebouncedRef'
 import { useSettingsStore } from '@/stores/settings'
 import { useTabsStore } from '@/stores/tabs'
@@ -127,11 +126,6 @@ onUnmounted(() => {
             @pointercancel="handleThumbRelease"
           />
         </div>
-      </section>
-
-      <!-- Limiter (reused popup component) -->
-      <section class="card">
-        <Limiter />
       </section>
 
       <!-- Locale -->

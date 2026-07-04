@@ -85,8 +85,8 @@
       "hint": "打开一个播放音频的标签页，会自动平衡"
     },
     "balance": {
-      "onHint": "音量平衡：开（点击旁通 / A-B 对比）",
-      "offHint": "音量平衡：关 — 直通原始音量（点击重新开启）",
+      "onHint": "音量平衡：开（点击对比）",
+      "offHint": "音量平衡：关",
       "bypass": "直通",
       "dash": "—"
     },
@@ -146,7 +146,27 @@
     "reportBody": "## 发生了什么\n\n<!-- 描述遇到的问题和你的预期。 -->\n\n## 环境信息\n\n- EqualLoud 版本:{version}\n- 浏览器:{browser}\n\n## 诊断日志\n\n<!-- 日志已复制到剪贴板,请粘贴到下方三个反引号之间(Cmd/Ctrl+V)。 -->\n\n```\n{logs}\n```\n",
     "reportOpened": "已打开 issue 页面,请粘贴日志",
     "tooltip": {
-      "title": "后台 Service Worker 近期的警告与错误。报问题时复制并附上——SW 休眠后控制台历史会丢失,这是事后排查 bug 的唯一途径。"
+      "title": "近期的警告与错误，报问题时可复制附上。"
+    }
+  },
+  "pro": {
+    "label": "专业",
+    "toggle": "切换专业模式"
+  },
+  "analysis": {
+    "truePeak": "真峰值",
+    "integrated": "整体响度",
+    "lra": "动态范围"
+  },
+  "preset": {
+    "group": "响度预设",
+    "streaming": "流媒体",
+    "podcast": "播客",
+    "broadcast": "广播",
+    "sources": {
+      "streaming": "−14 LUFS：Spotify、YouTube、TIDAL 的归一化目标。",
+      "podcast": "−16 LUFS：Apple Podcasts、AES 推荐的播客标准。",
+      "broadcast": "−23 LUFS：欧洲广播联盟 EBU R128 标准。"
     }
   }
 }

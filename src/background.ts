@@ -160,6 +160,13 @@ function ensureTab(
       isCapturing: true,
       shortTerm: -Infinity,
       blockCount: 0,
+      // 2.0 Pro measurements: -Infinity until the first finite heartbeat arrives
+      // (the worklet emits these once it has enough blocks). Explicit init keeps
+      // the popup from reading `undefined` on the first STATE_PUSH.
+      momentary: -Infinity,
+      integrated: -Infinity,
+      truePeakDb: -Infinity,
+      lra: -Infinity,
       // Seed from the content script's last-applied gain when available so a
       // SW recovering from sleep doesn't reset a loud tab to 0 dB (full
       // volume) and blip the user before the next heartbeat re-balances it.
@@ -410,6 +417,14 @@ async function handleNotification(
       }
       t.shortTerm = message.shortTerm ?? -Infinity
       t.blockCount = message.blockCount ?? 0
+      // 2.0 Pro measurements: forward the worklet's full readout to the popup.
+      // These are optional on the wire (legacy content scripts omit them); only
+      // overwrite the stored value when the message actually carries one, so a
+      // stale reading from a newer heartbeat isn't clobbered by an absent field.
+      if (message.momentary !== undefined) t.momentary = message.momentary
+      if (message.integrated !== undefined) t.integrated = message.integrated
+      if (message.truePeakDb !== undefined) t.truePeakDb = message.truePeakDb
+      if (message.lra !== undefined) t.lra = message.lra
       maybeBalance()
       // Stream the fresh measurement to the popup regardless of whether
       // maybeBalance() actually ran a pass. The balance throttle
@@ -628,6 +643,12 @@ export function seedTab(tab: Partial<TabState> & { tabId: number }): TabState {
     isCapturing: true,
     shortTerm: -14,
     blockCount: 50,
+    // 2.0 Pro measurements: sensible test defaults so seeded tabs render full
+    // data without each test having to specify them.
+    momentary: -14,
+    integrated: -14,
+    truePeakDb: -1,
+    lra: 7,
     appliedGainDb: 0,
     maxGainDb: DEFAULT_MAX_GAIN_DB,
     balanceEnabled: true,

@@ -68,24 +68,31 @@ describe('App', () => {
     expect(wrapper.find('.power').exists()).toBe(true)
   })
 
-  it('renders the settings gear button in the footer', () => {
+  it('renders the Pro-mode toggle button in the footer (2.0)', () => {
     const wrapper = mount(App, {
       global: {
         plugins: [i18n],
       },
     })
-    expect(wrapper.find('.icon-btn').exists()).toBe(true)
+    // 2.0 replaced the settings gear with a Pro-mode text toggle.
+    const proBtn = wrapper
+      .findAll('.ghost')
+      .find(
+        (b) => b.attributes('title')?.includes('Pro') || b.attributes('aria-pressed') !== undefined,
+      )
+    expect(proBtn).toBeTruthy()
   })
 
-  it('keeps the settings panel collapsed until the gear is clicked', async () => {
+  it('keeps the loudness-analysis panel collapsed until Pro mode is enabled', async () => {
     const wrapper = mount(App, {
       global: {
         plugins: [i18n],
       },
     })
-    expect(wrapper.find('.settings').classes()).not.toContain('open')
-    await wrapper.find('.icon-btn').trigger('click')
-    expect(wrapper.find('.settings').classes()).toContain('open')
+    // The Pro analysis panel (.settings WITHOUT .always) starts collapsed.
+    const proPanel = wrapper.findAll('.settings').find((s) => !s.classes().includes('always'))
+    expect(proPanel).toBeTruthy()
+    expect(proPanel!.classes()).not.toContain('open')
   })
 
   it('renders the language toggle button', () => {

@@ -43,6 +43,13 @@ function startEqualLoud(): void {
   // Tracks the handle whose LUFS we report upstream.
   let lastShortTerm = -Infinity
   let lastBlockCount = 0
+  // 2.0 Pro-mode measurements. Carried alongside shortTerm so the SW can
+  // forward them to the popup without a separate channel. Reset whenever the
+  // primary changes (see onPrimaryChange below).
+  let lastMomentary = -Infinity
+  let lastIntegrated = -Infinity
+  let lastTruePeakDb = -Infinity
+  let lastLra = -Infinity
   /**
    * The most recent gain (dB) applied to this tab's GainNode(s), captured from
    * `SET_GAIN`. Echoed back in `MEDIA_ATTACHED` / `LUFS_REPORT` so a SW that
@@ -71,11 +78,21 @@ function startEqualLoud(): void {
       primaryAttachedAt = Date.now()
       const handle = manager.getHandleFor(primary)
       if (handle) {
+        // Reset all cached measurements — the new primary is a different source
+        // so the previous primary's integrated/LRA/true-peak are meaningless.
         lastShortTerm = -Infinity
         lastBlockCount = 0
+        lastMomentary = -Infinity
+        lastIntegrated = -Infinity
+        lastTruePeakDb = -Infinity
+        lastLra = -Infinity
         unsubLufs = handle.onLufs((u) => {
           lastShortTerm = u.shortTerm
           lastBlockCount = u.blockCount
+          lastMomentary = u.momentary
+          lastIntegrated = u.integrated
+          lastTruePeakDb = u.truePeakDb
+          lastLra = u.lra
         })
       }
       notifySw({
@@ -107,6 +124,12 @@ function startEqualLoud(): void {
         tabId: TAB_ID_SENTINEL,
         shortTerm: lastShortTerm,
         blockCount: lastBlockCount,
+        // 2.0 Pro measurements. Sent on every heartbeat; the SW forwards
+        // whatever is finite. Legacy SWs ignore unknown fields harmlessly.
+        momentary: lastMomentary,
+        integrated: lastIntegrated,
+        truePeakDb: lastTruePeakDb,
+        lra: lastLra,
         appliedGainDb: lastAppliedGainDb,
       })
     }

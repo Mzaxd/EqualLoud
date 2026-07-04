@@ -13,12 +13,28 @@ import { useTabsStore, hasEnoughSamples } from '@/stores/tabs'
  */
 defineOptions({ name: 'TabList' })
 
+/** Pro mode shows per-tab integrated LUFS + LRA micro-readings (2.0). */
+withDefaults(defineProps<{ professional?: boolean }>(), { professional: false })
+
 const tabsStore = useTabsStore()
 const { t } = useI18n()
 
 function formatGain(gainDb: number): string {
   const prefix = gainDb >= 0 ? '+' : ''
   return `${prefix}${gainDb.toFixed(1)} dB`
+}
+
+/**
+ * Format the per-tab Pro micro-reading: "−8 LUFS · 5 LU" (integrated + LRA).
+ * Returns empty string when either value is unmeasured (no point cluttering
+ * the row with "—"). Shown only in professional mode, at low contrast so it
+ * doesn't compete with the primary gain readout.
+ */
+function formatMicro(tab: { integrated?: number; lra?: number }): string {
+  const i = tab.integrated
+  const l = tab.lra
+  if (!Number.isFinite(i ?? -Infinity) || !Number.isFinite(l ?? -Infinity)) return ''
+  return `${i!.toFixed(0)} LUFS · ${l!.toFixed(0)} LU`
 }
 
 /** Tailwind-style class for the gain badge: big boost → bright honey, normal
@@ -56,6 +72,21 @@ function getFaviconUrl(tab: { url: string; favIconUrl?: string }): string {
   } catch {
     return ''
   }
+}
+
+/**
+ * Whether a tab is still gathering LUFS samples (the "analyzing" state).
+ * Inlined so we can show the pulsing indicator in the gain-readout slot
+ * instead of a separate sub-row, avoiding extra vertical space.
+ */
+function isAnalyzing(tab: {
+  isCapturing: boolean
+  blockCount: number
+  shortTerm: number
+}): boolean {
+  return (
+    tab.isCapturing && !hasEnoughSamples({ blockCount: tab.blockCount, shortTerm: tab.shortTerm })
+  )
 }
 
 /** First character of the hostname, used as the favicon fallback glyph. */
@@ -114,31 +145,31 @@ const globalEnabled = computed(() => tabsStore.isAutoBalancing)
           <span class="ttitle">{{ tab.title }}</span>
 
           <span
-            v-if="globalEnabled && tab.balanceEnabled"
+            v-if="globalEnabled && tab.balanceEnabled && !isAnalyzing(tab)"
             :class="gainClass(tab.appliedGainDb)"
             aria-live="polite"
             aria-atomic="true"
           >
             {{ formatGain(tab.appliedGainDb) }}
           </span>
+          <!-- "Analyzing" indicator: takes over the gain-readout slot while the
+               worklet gathers LUFS samples. No extra row, zero added height. -->
+          <span
+            v-else-if="globalEnabled && tab.balanceEnabled && isAnalyzing(tab)"
+            class="analyzing"
+          >
+            <span class="status-dot"></span>
+            <span class="analyzing-text">{{ t('tabs.status.collecting') }}</span>
+          </span>
           <span v-else-if="globalEnabled && !tab.balanceEnabled" class="gain muted">{{
             t('tabs.balance.bypass')
           }}</span>
           <span v-else class="gain muted">{{ t('tabs.balance.dash') }}</span>
-        </button>
 
-        <!-- "Analyzing…" sub-row while the worklet gathers enough blocks for a
-             reliable LUFS reading; hides once we have enough samples. -->
-        <div
-          v-if="
-            tab.isCapturing &&
-            !hasEnoughSamples({ blockCount: tab.blockCount, shortTerm: tab.shortTerm })
-          "
-          class="tab-status collecting"
-        >
-          <span class="status-dot"></span>
-          <span>{{ t('tabs.status.collecting') }}</span>
-        </div>
+          <!-- Pro-mode micro-reading: this tab's integrated loudness + LRA.
+               Low-contrast mono so it sits behind the primary gain readout. -->
+          <span v-if="professional && formatMicro(tab)" class="micro">{{ formatMicro(tab) }}</span>
+        </button>
       </div>
     </TransitionGroup>
   </div>
@@ -271,25 +302,38 @@ const globalEnabled = computed(() => tabsStore.isAutoBalancing)
   font-family: var(--font-ui);
 }
 
-/* Collecting sub-row */
-.tab-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 6px 8px;
-  margin: 0 -6px;
-  font-size: 10px;
-  color: var(--muted);
+/* Pro-mode micro-reading (integrated · LRA). Sits at the far right, dimmed. */
+.micro {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  margin-left: 4px;
+  white-space: nowrap;
 }
 
-.tab-status.collecting {
+/* "Analyzing" indicator — inline in the gain slot, no extra row. A pulsing
+ * dot + short text, low-contrast so it sits in the layout without demanding
+ * attention. Replaces the old .tab-status sub-row that added ~20px height. */
+.analyzing {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: 10px;
   color: var(--honey-2);
 }
 
+.analyzing-text {
+  white-space: nowrap;
+}
+
 .status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
   background: var(--honey-2);
   animation: pulse 1.5s infinite;
 }

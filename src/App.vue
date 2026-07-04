@@ -4,8 +4,9 @@ import { useI18n } from 'vue-i18n'
 
 import AutoBalance from '@/components/AutoBalance.vue'
 import Diagnostics from '@/components/Diagnostics.vue'
-import Limiter from '@/components/Limiter.vue'
+import LoudnessAnalysis from '@/components/LoudnessAnalysis.vue'
 import PowerToggle from '@/components/PowerToggle.vue'
+import Presets from '@/components/Presets.vue'
 import TabList from '@/components/TabList.vue'
 import UpdateNotice from '@/components/UpdateNotice.vue'
 import { useSettingsStore } from '@/stores/settings'
@@ -20,15 +21,18 @@ const settings = useSettingsStore()
 // The footer 「中 / EN」 button is a single two-state toggle (the prototype's
 // behaviour), not a dropdown: each click flips between the two supported
 // locales. The bilingual label reads naturally in either active locale.
-const showSettings = ref(false)
 const showDiagnostics = ref(false)
 // Ref to the Diagnostics component so we can refresh its entry count whenever
 // the panel is expanded (avoids polling the SW while it's collapsed).
 const diagnosticsRef = ref<InstanceType<typeof Diagnostics> | null>(null)
 
-function toggleSettings(): void {
-  showSettings.value = !showSettings.value
-}
+/** Pro mode drives the loudness-analysis panel + per-tab micro-readings. */
+const professionalMode = computed({
+  get: () => settings.professionalMode,
+  set: (v: boolean) => {
+    settings.professionalMode = v
+  },
+})
 
 function toggleDiagnostics(): void {
   showDiagnostics.value = !showDiagnostics.value
@@ -106,32 +110,28 @@ onUnmounted(() => {
       <!-- Target volume + the combined loudness meter. -->
       <AutoBalance />
 
+      <!-- 2.0: one-tap loudness presets (Spotify/Podcast/Broadcast/Loud). -->
+      <Presets />
+
       <!-- Now-playing tab list (whole-row click = A/B). -->
       <div class="tabs-head">
         <span class="lab">{{ t('popup.playing') }}</span>
         <span class="n">{{ tabCountLabel }}</span>
       </div>
-      <TabList />
+      <TabList :professional="professionalMode" />
 
-      <!-- Collapsible settings panel (limiter), default hidden. Opens via the
-           footer gear. Animates via grid-template-rows 0fr→1fr, which the
-           compositor interpolates WITHOUT a layout reflow per frame (unlike
-           max-height, which re-layouts the whole body every frame and was the
-           source of the jank on open/close). The .settings-inner wrapper is
-           overflow:hidden + min-height:0 so the 0fr track collapses to truly
-           zero; the divider/spacing sit on the .panel-pad child so they don't
-           fight the collapsed track height. -->
-      <div class="settings" :class="{ open: showSettings }">
+      <!-- Pro panel: loudness analysis (true-peak / integrated / LRA).
+           Default collapsed; "专业" in the footer toggles it. Protection runs
+           silently at −1 dBTP in the background — not shown, not adjustable. -->
+      <div class="settings" :class="{ open: professionalMode }">
         <div class="settings-inner">
           <div class="panel-pad">
-            <Limiter />
+            <LoudnessAnalysis />
           </div>
         </div>
       </div>
 
-      <!-- Collapsible diagnostics panel (log export), default hidden. Opens via
-           the footer 「Diagnostics」 text button. Shares the same grid-rows
-           collapse animation as the settings panel above for visual parity. -->
+      <!-- Collapsible diagnostics panel (log export), default hidden. -->
       <div class="settings" :class="{ open: showDiagnostics }">
         <div class="settings-inner">
           <div class="panel-pad">
@@ -163,6 +163,16 @@ onUnmounted(() => {
         <button class="ghost" type="button" @click="toggleLocale">{{ langLabel }}</button>
         <button
           class="ghost"
+          :class="{ active: professionalMode }"
+          type="button"
+          :aria-pressed="professionalMode"
+          :title="t('pro.toggle')"
+          @click="professionalMode = !professionalMode"
+        >
+          {{ t('pro.label') }}
+        </button>
+        <button
+          class="ghost"
           :class="{ active: showDiagnostics }"
           type="button"
           :aria-label="t('diagnostics.expand')"
@@ -170,29 +180,6 @@ onUnmounted(() => {
           @click="toggleDiagnostics"
         >
           {{ t('diagnostics.expand') }}
-        </button>
-        <button
-          class="icon-btn"
-          :class="{ active: showSettings }"
-          type="button"
-          :aria-label="t('settings.expand')"
-          :title="showSettings ? t('settings.collapse') : t('settings.expand')"
-          @click="toggleSettings"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="3"></circle>
-            <path
-              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-            ></path>
-          </svg>
         </button>
       </div>
     </footer>

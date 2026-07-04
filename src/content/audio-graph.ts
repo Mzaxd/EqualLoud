@@ -52,6 +52,14 @@ const log = createLogger('audio')
 export interface LufsUpdate {
   shortTerm: number
   blockCount: number
+  /** Momentary (400 ms, ungated). −Infinity until the worklet has a block. */
+  momentary: number
+  /** Integrated (BS.1770 gated). −Infinity until the worklet has gated blocks. */
+  integrated: number
+  /** True-peak (dBTP). −Infinity until signal arrives. 2.0. */
+  truePeakDb: number
+  /** Loudness Range (LU). 0 / −Infinity until enough short-term history. 2.0. */
+  lra: number
 }
 
 export interface AudioGraphHandle {
@@ -430,11 +438,29 @@ function buildWebAudioHandle(
       return
     }
     listener = (ev: MessageEvent) => {
-      const data = ev.data as { type?: string; shortTerm?: number; blockCount?: number }
+      const data = ev.data as {
+        type?: string
+        shortTerm?: number
+        blockCount?: number
+        momentary?: number
+        integrated?: number
+        truePeakDb?: number
+        lra?: number
+      }
       if (data?.type !== 'lufs') return
       const update: LufsUpdate = {
         shortTerm: data.shortTerm ?? -Infinity,
         blockCount: data.blockCount ?? 0,
+        // momentary/integrated are emitted by the worklet but were dropped here
+        // in 1.0. 2.0 forwards them. Legacy/older worklets that don't emit
+        // these fields degrade gracefully to -Infinity.
+        momentary: data.momentary ?? -Infinity,
+        integrated: data.integrated ?? -Infinity,
+        // truePeakDb/lra arrive only from the 2.0 worklet (Phase B). Until then
+        // every update carries -Infinity so downstream code can treat "absent"
+        // uniformly as "not measured yet".
+        truePeakDb: data.truePeakDb ?? -Infinity,
+        lra: data.lra ?? -Infinity,
       }
       for (const cb of lufsCbs) cb(update)
     }

@@ -21,6 +21,14 @@ export const useSettingsStore = defineStore(
      */
     const lastNoticeVersion = ref<string | null>(null)
 
+    /**
+     * Pro mode (2.0): when true, the popup shows the loudness-analysis panel
+     * (true-peak / integrated / LRA) and per-tab micro-readings. Simple mode
+     * (the default) hides them. Pure UI toggle — does not change any audio
+     * processing. Persisted so the user's preference survives popup reopens.
+     */
+    const professionalMode = ref(false)
+
     function setLocale(newLocale: string): void {
       locale.value = normalizeLocaleCode(newLocale)
     }
@@ -28,6 +36,7 @@ export const useSettingsStore = defineStore(
     return {
       locale,
       lastNoticeVersion,
+      professionalMode,
       setLocale,
     }
   },
@@ -37,7 +46,7 @@ export const useSettingsStore = defineStore(
       // Sharing that key made popup locale writes overwrite the SW's
       // {enabled,targetLufs} and vice versa.
       key: 'popupSettings',
-      pick: ['locale', 'lastNoticeVersion'],
+      pick: ['locale', 'lastNoticeVersion', 'professionalMode'],
       // The popup-local schema (locale + lastNoticeVersion) is structurally
       // stable. The SW's settings/limiter are versioned via @/storage/migrate
       // (see background.ts); if this store ever grows complex fields, apply the

@@ -71,6 +71,48 @@ const ABSOLUTE_THRESHOLD = -70.0
 const RELATIVE_THRESHOLD_OFFSET = -10.0
 const MAX_INTEGRATED_BLOCKS = 600
 
+// ── True-peak (dBTP) polyphase taps — inlined mirror of true-peak.ts ────────
+// The worklet cannot import the app bundle, so the 4× interpolation filter is
+// duplicated here. A parity test (true-peak.spec.ts) asserts the worklet and
+// offline paths produce identical peaks. Change both together.
+// Each phase: out[4i+p] = Σ coeffs[k] · x[i + offsets[k]] (offsets in samples,
+// negative = past). Verified against pure tones (≤6 kHz: tp≈sp) and the +1/−1
+// worst case (+1.6 dBTP). See true-peak.ts header for the derivation.
+const TP_PHASE_OFFSETS: ReadonlyArray<ReadonlyArray<number>> = [
+  [-2, -1, 0, 1, 2],
+  [-2, -1, 0, 1],
+  [-2, -1, 0, 1],
+  [-2, -1, 0, 1],
+]
+const TP_PHASE_COEFFS: ReadonlyArray<ReadonlyArray<number>> = [
+  [0.003197, -0.050684, 1.094975, -0.050684, 0.003197],
+  [-0.008176, 0.321975, 0.628367, 0.057833],
+  [0.006065, 0.493935, 0.493935, 0.006065],
+  [0.057833, 0.628367, 0.321975, -0.008176],
+]
+const TP_SILENCE_DB = -100
+
+// ── LRA (Loudness Range) — inlined mirror of lra.ts ─────────────────────────
+const LRA_ABSOLUTE_THRESHOLD = -70.0
+const LRA_WINDOW_BLOCKS = 300 // ~30 s at ~10 Hz short-term rate
+const LRA_MIN_BLOCKS = 4
+
+/**
+ * Linear-interpolation percentile of a *sorted ascending* array (R-7 method,
+ * matching numpy/Excel). Inlined mirror of the helper in lra.ts.
+ */
+function lraPercentile(sorted: ReadonlyArray<number>, p: number): number {
+  const n = sorted.length
+  if (n === 0) return -Infinity
+  if (n === 1) return sorted[0]!
+  const rank = (p / 100) * (n - 1)
+  const lo = Math.floor(rank)
+  const hi = Math.ceil(rank)
+  if (lo === hi) return sorted[lo]!
+  const frac = rank - lo
+  return sorted[lo]! + frac * (sorted[hi]! - sorted[lo]!)
+}
+
 /**
  * AudioWorklet processor for LUFS audio analysis
  * Captures audio samples and sends them to the main thread for LUFS calculation,
@@ -134,6 +176,22 @@ class LufsProcessor extends AudioWorkletProcessor {
   shortTermBlocks: number[]
   blockCount: number
 
+  // ── True-peak tracker state (2.0) ───────────────────────────────────────
+  // 5-sample ring of recent raw input (widest phase needs x[i-2]..x[i+2]).
+  tpHistory: number[]
+  tpHistIdx: number
+  tpMaxAbs: number
+  tpSamplesSinceDecay: number
+  readonly tpDecayInterval: number
+  readonly tpDecayFactor: number
+
+  // ── LRA tracker state (2.0) ─────────────────────────────────────────────
+  // Ring of recent short-term LUFS values (~30 s window).
+  lraWindow: number[]
+  lraIdx: number
+  lraFilled: number
+  lraCached: number
+
   constructor() {
     super()
     this.channels = 2
@@ -186,6 +244,20 @@ class LufsProcessor extends AudioWorkletProcessor {
     this.blockLoudnesses = []
     this.shortTermBlocks = []
     this.blockCount = 0
+
+    // True-peak tracker init. Decay: ×0.85 every ~100 ms ⇒ ~3 s effective window.
+    this.tpHistory = new Array<number>(5).fill(0)
+    this.tpHistIdx = 0
+    this.tpMaxAbs = 0
+    this.tpSamplesSinceDecay = 0
+    this.tpDecayInterval = Math.max(1, Math.floor(0.1 * sr))
+    this.tpDecayFactor = 0.85
+
+    // LRA window init (filled with -Infinity so unfilled slots auto-gate out).
+    this.lraWindow = new Array<number>(LRA_WINDOW_BLOCKS).fill(-Infinity)
+    this.lraIdx = 0
+    this.lraFilled = 0
+    this.lraCached = 0
 
     // Control messages
     this.port.onmessage = (ev: MessageEvent) => {
@@ -312,6 +384,13 @@ class LufsProcessor extends AudioWorkletProcessor {
         this.samplesAccumulated++
       }
 
+      // ── True-peak (2.0): feed the RAW input (pre K-weighting, per BS.1770
+      // §5.2) to the polyphase tracker. Both channels — the tracker keeps the
+      // max across L and R, which is the conservative (channel-true-peak)
+      // reading a "clipping safety" indicator wants.
+      this.processTruePeak(left[i] ?? 0)
+      if (right !== null) this.processTruePeak(right[i] ?? 0)
+
       // Standard hop-based blocks: fire only after the ring is full. These are
       // the accurate, fully-overlapped measurements that drive steady-state
       // balancing.
@@ -340,12 +419,19 @@ class LufsProcessor extends AudioWorkletProcessor {
         const momentary = this.getMomentary()
         const shortTerm = this.getShortTerm()
         const integrated = this.getIntegrated()
+        // 2.0: push the short-term reading into the LRA window and read both
+        // the fresh LRA and the true-peak reading for this update cycle.
+        this.pushLra(shortTerm)
+        const lra = this.lraCached
+        const truePeakDb = this.getTruePeakDb()
         this.port.postMessage({
           type: 'lufs',
           momentary,
           shortTerm,
           integrated,
           blockCount: this.blockCount,
+          truePeakDb,
+          lra,
         })
       }
     }
@@ -452,6 +538,77 @@ class LufsProcessor extends AudioWorkletProcessor {
     return 10 * Math.log10(finalMeanPower)
   }
 
+  /**
+   * Process one raw input sample through the 4× polyphase true-peak filter
+   * (inlined mirror of TruePeakTracker in true-peak.ts). Tracks the running
+   * max |oversampled sample| with a ~3 s decay so the reading tracks recent
+   * peaks. Called once per channel per sample.
+   */
+  private processTruePeak(x: number): void {
+    this.tpHistory[this.tpHistIdx] = x
+    this.tpHistIdx = (this.tpHistIdx + 1) % this.tpHistory.length
+    const n = this.tpHistory.length
+    // Evaluate all 4 phases; offset 0 = newest sample, negative offsets = past.
+    for (let p = 0; p < 4; p++) {
+      const offs = TP_PHASE_OFFSETS[p]!
+      const coeffs = TP_PHASE_COEFFS[p]!
+      let sum = 0
+      for (let k = 0; k < offs.length; k++) {
+        const back = -offs[k]! // offsets are negative for past samples
+        const hIdx = (this.tpHistIdx - 1 - back + n * 4) % n
+        sum += coeffs[k]! * this.tpHistory[hIdx]!
+      }
+      const a = Math.abs(sum)
+      if (a > this.tpMaxAbs) this.tpMaxAbs = a
+    }
+    if (++this.tpSamplesSinceDecay >= this.tpDecayInterval) {
+      this.tpSamplesSinceDecay = 0
+      this.tpMaxAbs *= this.tpDecayFactor
+    }
+  }
+
+  /** Current true-peak in dBTP, or -Infinity before any signal. */
+  private getTruePeakDb(): number {
+    if (this.tpMaxAbs <= 0) return -Infinity
+    const db = 20 * Math.log10(this.tpMaxAbs)
+    return db < TP_SILENCE_DB ? -Infinity : db
+  }
+
+  /**
+   * Push one short-term LUFS reading into the LRA sliding window and recompute.
+   * (Inlined mirror of LraTracker in lra.ts.) Called at the ~10 Hz update rate.
+   */
+  private pushLra(shortTermLufs: number): void {
+    this.lraWindow[this.lraIdx] = Number.isFinite(shortTermLufs) ? shortTermLufs : -Infinity
+    this.lraIdx = (this.lraIdx + 1) % this.lraWindow.length
+    if (this.lraFilled < this.lraWindow.length) this.lraFilled++
+    this.lraCached = this.computeLra()
+  }
+
+  /** EBU R128 LRA over the current short-term window (percentile method). */
+  private computeLra(): number {
+    if (this.lraFilled < LRA_MIN_BLOCKS) return 0
+    // Absolute gate.
+    const gated: number[] = []
+    for (let i = 0; i < this.lraFilled; i++) {
+      const v = this.lraWindow[i]!
+      if (Number.isFinite(v) && v > LRA_ABSOLUTE_THRESHOLD) gated.push(v)
+    }
+    if (gated.length < LRA_MIN_BLOCKS) return 0
+    // Relative gate (−10 LU below the gated mean).
+    let sumPower = 0
+    for (const v of gated) sumPower += Math.pow(10, v / 10)
+    const meanLufs = 10 * Math.log10(sumPower / gated.length)
+    const relThr = meanLufs - 10
+    const relGated = gated.filter((l) => l >= relThr)
+    if (relGated.length < LRA_MIN_BLOCKS) return 0
+    // Percentiles via sort.
+    const sorted = [...relGated].sort((a, b) => a - b)
+    const p10 = lraPercentile(sorted, 10)
+    const p95 = lraPercentile(sorted, 95)
+    return Math.max(0, p95 - p10)
+  }
+
   private resetState(): void {
     this.hs_x1.fill(0)
     this.hs_x2.fill(0)
@@ -472,6 +629,16 @@ class LufsProcessor extends AudioWorkletProcessor {
     this.blockLoudnesses = []
     this.shortTermBlocks = []
     this.blockCount = 0
+    // 2.0: reset true-peak + LRA trackers so a source swap (SPA navigation,
+    // ad insert) doesn't carry the previous clip's peaks/dynamics forward.
+    this.tpHistory.fill(0)
+    this.tpHistIdx = 0
+    this.tpMaxAbs = 0
+    this.tpSamplesSinceDecay = 0
+    this.lraWindow.fill(-Infinity)
+    this.lraIdx = 0
+    this.lraFilled = 0
+    this.lraCached = 0
   }
 }
 
