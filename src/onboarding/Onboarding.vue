@@ -48,7 +48,9 @@ function finish(): void {
 }
 
 function toggleLocale(): void {
-  locale.value = locale.value === 'zh_CN' ? 'en' : 'zh_CN'
+  // Pin the user's manual choice so the extension stops following system lang.
+  settings.setLocale(locale.value === 'zh_CN' ? 'en' : 'zh_CN')
+  locale.value = settings.locale
 }
 
 const langLabel = locale.value === 'zh_CN' ? 'EN' : '中'

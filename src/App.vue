@@ -67,18 +67,23 @@ const tabCountLabel = computed(() => {
 })
 
 function toggleLocale(): void {
-  locale.value = locale.value === 'zh_CN' ? 'en' : 'zh_CN'
+  // Route through settings.setLocale so the choice is pinned (localeManuallySet
+  // = true) and the extension stops following the system language afterwards.
+  settings.setLocale(locale.value === 'zh_CN' ? 'en' : 'zh_CN')
+  locale.value = settings.locale
 }
 
 onMounted(() => {
   tabsStore.startConnection()
-
-  // Hydrate from the persisted popup locale (set by the user on a previous open).
-  if (settings.locale) {
-    locale.value = settings.locale
+  // Locale is resolved in main.ts (resolveLocale) — follow system language
+  // unless the user manually picked one. Sync the i18n instance here in case
+  // the system language changed since the popup was last opened.
+  if (!settings.localeManuallySet) {
+    const sys = typeof navigator !== 'undefined' ? navigator.language : 'en'
+    const normalized = sys.toLowerCase().startsWith('zh') ? 'zh_CN' : 'en'
+    locale.value = normalized
+    settings.locale = normalized
   }
-  // langLabel is computed from locale, so no manual refresh is needed when
-  // locale changes — Vue re-derives it.
 })
 
 watch(

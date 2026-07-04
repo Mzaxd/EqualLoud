@@ -10,7 +10,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 // import router from './router'
 import { i18n } from './i18n'
-import { useSettingsStore } from './stores/settings'
+import { resolveLocale, useSettingsStore } from './stores/settings'
 
 const app = createApp(App)
 
@@ -21,8 +21,8 @@ app.use(pinia)
 // app.use(router)
 app.use(i18n)
 
-// Hydrate i18n locale from persisted store before mount
+// Resolve locale: follow system language unless the user has manually picked.
 const settings = useSettingsStore(pinia)
-i18n.global.locale.value = settings.locale as 'en' | 'zh_CN'
+i18n.global.locale.value = resolveLocale(settings.locale, settings.localeManuallySet)
 
 app.mount('#app')

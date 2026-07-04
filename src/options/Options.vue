@@ -59,8 +59,9 @@ const localeOptions = [
 ] as const
 
 function pickLocale(value: string): void {
-  locale.value = value as 'en' | 'zh_CN'
-  settings.locale = value
+  // Route through setLocale so the manual choice is pinned.
+  settings.setLocale(value)
+  locale.value = settings.locale as 'en' | 'zh_CN'
 }
 
 // --- reload-all convenience -------------------------------------------------

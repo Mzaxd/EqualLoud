@@ -10,7 +10,7 @@ import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
 import { createApp } from 'vue'
 
 import { i18n } from '@/i18n'
-import { useSettingsStore } from '@/stores/settings'
+import { resolveLocale, useSettingsStore } from '@/stores/settings'
 
 import Options from './Options.vue'
 
@@ -23,6 +23,6 @@ app.use(pinia)
 app.use(i18n)
 
 const settings = useSettingsStore(pinia)
-i18n.global.locale.value = settings.locale as 'en' | 'zh_CN'
+i18n.global.locale.value = resolveLocale(settings.locale, settings.localeManuallySet)
 
 app.mount('#app')

@@ -1,10 +1,22 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-function normalizeLocaleCode(input: string | null | undefined): 'en' | 'zh_CN' {
+export function normalizeLocaleCode(input: string | null | undefined): 'en' | 'zh_CN' {
   const code = (input || '').toLowerCase()
   if (code.startsWith('zh')) return 'zh_CN'
   return 'en'
+}
+
+/**
+ * Resolve the locale that should be active right now, given the persisted
+ * settings. When the user has NOT manually chosen a language, re-detect from
+ * the browser/system language on every call — so the extension follows an OS
+ * language change without the user touching anything. Once the user taps the
+ * language toggle, their choice is pinned and the system language is ignored.
+ */
+export function resolveLocale(storedLocale: string, manuallySet: boolean): 'en' | 'zh_CN' {
+  if (manuallySet) return normalizeLocaleCode(storedLocale)
+  return normalizeLocaleCode(typeof navigator !== 'undefined' ? navigator.language : 'en')
 }
 
 export const useSettingsStore = defineStore(
@@ -13,6 +25,16 @@ export const useSettingsStore = defineStore(
     const locale = ref<string>(
       normalizeLocaleCode(typeof navigator !== 'undefined' ? navigator.language : 'en'),
     )
+
+    /**
+     * Whether the user has manually chosen a language. While false (the default,
+     * and the state of every fresh install), the locale follows the browser/
+     * system language on every popup open — so a user who switches their OS
+     * language sees the extension follow automatically. The moment the user
+     * taps the language toggle, this flips to true and the chosen locale is
+     * pinned permanently (we stop overriding it with the system language).
+     */
+    const localeManuallySet = ref(false)
 
     /**
      * The app version for which the "please refresh your tabs" update notice
@@ -29,12 +51,18 @@ export const useSettingsStore = defineStore(
      */
     const professionalMode = ref(false)
 
+    /**
+     * Set the locale *manually* (user tapped the language toggle). Pins the
+     * choice so the extension stops following the system language.
+     */
     function setLocale(newLocale: string): void {
       locale.value = normalizeLocaleCode(newLocale)
+      localeManuallySet.value = true
     }
 
     return {
       locale,
+      localeManuallySet,
       lastNoticeVersion,
       professionalMode,
       setLocale,
@@ -46,7 +74,7 @@ export const useSettingsStore = defineStore(
       // Sharing that key made popup locale writes overwrite the SW's
       // {enabled,targetLufs} and vice versa.
       key: 'popupSettings',
-      pick: ['locale', 'lastNoticeVersion', 'professionalMode'],
+      pick: ['locale', 'localeManuallySet', 'lastNoticeVersion', 'professionalMode'],
       // The popup-local schema (locale + lastNoticeVersion) is structurally
       // stable. The SW's settings/limiter are versioned via @/storage/migrate
       // (see background.ts); if this store ever grows complex fields, apply the
