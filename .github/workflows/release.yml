@@ -111,4 +111,4 @@ jobs:
           CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-        run: npx chrome-webstore-upload upload --source release/release.zip --auto-publish
+        run: npx chrome-webstore-upload-cli upload --source release/release.zip --auto-publish
