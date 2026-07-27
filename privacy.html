@@ -1,4 +1,7 @@
 <!DOCTYPE html>
+<!-- Hallmark · genre: editorial · macrostructure: Long Document · theme: custom (amber-anchored)
+     · enrichment: none · nav: N9 · footer: Ft6 · motion: none
+     · pre-emit critique: P5 H4 E5 S4 R5 V5 · audience: privacy-conscious extension users · tone: editorial -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -12,276 +15,541 @@
     />
     <style>
       :root {
-        --bg: #1a1208;
-        --bg-elev: #241a0e;
-        --fg: #f5ead7;
-        --fg-dim: #c9b89a;
-        --accent: #e0944a;
-        --accent-soft: rgba(224, 148, 74, 0.16);
-        --border: rgba(245, 234, 215, 0.12);
-        --ok: #7fb87a;
-        --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hanken Grotesk', Roboto,
-          Helvetica, Arial, sans-serif;
-        --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+        /* Custom palette · anchor hue 55° (amber), warm-tinted neutrals */
+        --color-paper:    oklch(13% 0.012 65);
+        --color-paper-2:  oklch(17% 0.014 65);
+        --color-rule:     oklch(28% 0.012 65);
+        --color-muted:    oklch(62% 0.020 70);
+        --color-ink:      oklch(93% 0.012 80);
+        --color-accent:   oklch(72% 0.140 55);
+        --color-accent-soft: oklch(72% 0.140 55 / 0.14);
+        --color-focus:    oklch(72% 0.160 55);
+        --color-ok:       oklch(70% 0.120 145);
+
+        --font-display: 'Newsreader', Georgia, 'Times New Roman', serif;
+        --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hanken Grotesk', Roboto, Helvetica, Arial, sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+        --measure: 64ch;
+        --space-3xs: 0.25rem;
+        --space-2xs: 0.5rem;
+        --space-xs: 0.75rem;
+        --space-sm: 1rem;
+        --space-md: 1.5rem;
+        --space-lg: 2.25rem;
+        --space-xl: 3.5rem;
+        --space-2xl: 5.5rem;
+        --space-3xl: 8rem;
       }
       @media (prefers-color-scheme: light) {
         :root {
-          --bg: #fbf6ec;
-          --bg-elev: #ffffff;
-          --fg: #2a1f12;
-          --fg-dim: #6b5a44;
-          --accent: #b9682a;
-          --accent-soft: rgba(185, 104, 42, 0.1);
-          --border: rgba(42, 31, 18, 0.12);
-          --ok: #4a7a45;
+          --color-paper:    oklch(97% 0.012 85);
+          --color-paper-2:  oklch(99.5% 0.006 85);
+          --color-rule:     oklch(86% 0.010 80);
+          --color-muted:    oklch(45% 0.015 65);
+          --color-ink:      oklch(24% 0.015 55);
+          --color-accent:   oklch(55% 0.140 45);
+          --color-accent-soft: oklch(55% 0.140 45 / 0.10);
+          --color-focus:    oklch(55% 0.160 45);
+          --color-ok:       oklch(50% 0.130 145);
         }
       }
-      * {
-        box-sizing: border-box;
-      }
+
+      * { box-sizing: border-box; }
       html {
         scroll-behavior: smooth;
+        overflow-x: clip;
       }
       body {
         margin: 0;
-        background: var(--bg);
-        color: var(--fg);
-        font-family: var(--font-sans);
-        line-height: 1.65;
+        background: var(--color-paper);
+        color: var(--color-ink);
+        font-family: var(--font-body);
+        font-size: 1.0625rem;
+        line-height: 1.7;
+        font-weight: 350;
         -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        overflow-x: clip;
       }
-      header {
-        padding: 3.5rem 1.5rem 2.5rem;
-        text-align: center;
-        border-bottom: 1px solid var(--border);
-        background: linear-gradient(180deg, var(--accent-soft), transparent);
+
+      /* ── N9 · Edge-aligned minimal nav ───────────────────────── */
+      .masthead {
+        max-width: var(--measure);
+        margin: 0 auto;
+        padding: var(--space-xl) var(--space-md) var(--space-md);
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-md);
       }
-      header .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4em;
-        padding: 0.25rem 0.75rem;
-        border-radius: 999px;
-        background: var(--accent-soft);
-        color: var(--accent);
-        font-size: 0.8rem;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        margin-bottom: 1rem;
-      }
-      header h1 {
-        margin: 0 0 0.5rem;
-        font-family: var(--font-serif);
-        font-size: clamp(1.8rem, 4vw, 2.6rem);
+      .masthead .wordmark {
+        font-family: var(--font-display);
+        font-size: 1.15rem;
         font-weight: 600;
         letter-spacing: -0.01em;
+        color: var(--color-ink);
+        text-decoration: none;
       }
-      header .effective {
-        color: var(--fg-dim);
-        font-size: 0.9rem;
+      .masthead .wordmark .dot {
+        color: var(--color-accent);
       }
-      header .tldr {
-        max-width: 640px;
-        margin: 1.5rem auto 0;
-        padding: 1rem 1.25rem;
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        background: var(--bg-elev);
-        font-size: 0.95rem;
+      .masthead .source-link {
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--color-muted);
+        text-decoration: none;
+        border-bottom: 1px solid var(--color-rule);
+        padding-bottom: 1px;
+        transition: color 200ms var(--ease-out, ease-out),
+                    border-color 200ms var(--ease-out, ease-out);
       }
-      header .tldr strong {
-        color: var(--ok);
+      .masthead .source-link:hover,
+      .masthead .source-link:focus-visible {
+        color: var(--color-accent);
+        border-color: var(--color-accent);
       }
-      main {
-        max-width: 720px;
+      .masthead .source-link:focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 3px;
+        border-radius: 2px;
+      }
+
+      /* ── Document title block ────────────────────────────────── */
+      .doc-head {
+        max-width: var(--measure);
         margin: 0 auto;
-        padding: 2.5rem 1.5rem 4rem;
+        padding: var(--space-lg) var(--space-md) var(--space-lg);
+        border-top: 1px solid var(--color-rule);
       }
-      section {
-        margin-bottom: 2.5rem;
-        scroll-margin-top: 1.5rem;
+      .doc-head .kicker {
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--color-accent);
+        margin: 0 0 var(--space-sm);
       }
-      h2 {
-        font-family: var(--font-serif);
+      .doc-head h1 {
+        font-family: var(--font-display);
+        font-size: clamp(2.4rem, 6vw, 3.4rem);
+        font-weight: 360;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        margin: 0 0 var(--space-md);
+        max-width: 14ch;
+      }
+      .doc-head .dateline {
+        font-family: var(--font-display);
+        font-style: italic;
+        font-size: 0.98rem;
+        color: var(--color-muted);
+        margin: 0;
+      }
+
+      /* ── Lede paragraph with drop cap ────────────────────────── */
+      .lede {
+        max-width: var(--measure);
+        margin: 0 auto;
+        padding: 0 var(--space-md);
+      }
+      .lede p {
+        font-family: var(--font-display);
         font-size: 1.35rem;
+        line-height: 1.5;
+        font-weight: 380;
+        margin: 0;
+        color: var(--color-ink);
+      }
+      .lede p::first-letter {
+        font-family: var(--font-display);
+        font-weight: 500;
+        font-size: 3.4em;
+        line-height: 0.82;
+        float: left;
+        padding: 0.08em 0.12em 0 0;
+        color: var(--color-accent);
+      }
+      .lede strong {
+        font-weight: 560;
+        color: var(--color-ink);
+      }
+
+      /* ── Document body · continuous prose ────────────────────── */
+      .doc-body {
+        max-width: var(--measure);
+        margin: 0 auto;
+        padding: var(--space-xl) var(--space-md) var(--space-xl);
+      }
+      .doc-body section {
+        margin-bottom: var(--space-xl);
+      }
+      .doc-body section:last-of-type {
+        margin-bottom: 0;
+      }
+
+      /* Inline run-in section heads — emerge from the paragraph flow */
+      .doc-body h2 {
+        font-family: var(--font-display);
+        font-size: 1.1rem;
+        font-weight: 620;
+        line-height: 1.4;
+        letter-spacing: 0.01em;
+        margin: 0 0 var(--space-sm);
+        color: var(--color-ink);
+        position: relative;
+        padding-left: 0.95rem;
+      }
+      .doc-body h2::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0.55em;
+        width: 0.5rem;
+        height: 0.5rem;
+        background: var(--color-accent);
+      }
+      .doc-body h2 .num {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        font-weight: 500;
+        color: var(--color-muted);
+        letter-spacing: 0.06em;
+        margin-right: var(--space-2xs);
+        vertical-align: 0.18em;
+      }
+
+      .doc-body p {
+        margin: 0 0 var(--space-md);
+      }
+      .doc-body p:last-child {
+        margin-bottom: 0;
+      }
+      .doc-body ul {
+        margin: 0 0 var(--space-md);
+        padding-left: 1.1rem;
+        list-style: none;
+      }
+      .doc-body li {
+        margin-bottom: var(--space-xs);
+        padding-left: 0.4rem;
+        position: relative;
+      }
+      .doc-body li::before {
+        content: "—";
+        position: absolute;
+        left: -1.1rem;
+        color: var(--color-muted);
+      }
+      .doc-body .no-list li::before {
+        content: "✓";
+        color: var(--color-ok);
         font-weight: 600;
-        margin: 0 0 0.75rem;
-        padding-bottom: 0.4rem;
-        border-bottom: 1px solid var(--border);
-        color: var(--fg);
+        left: -1.3rem;
       }
-      p {
-        margin: 0 0 1rem;
+
+      /* ── Inline contents index (not a boxed card) ────────────── */
+      .contents {
+        font-family: var(--font-mono);
+        font-size: 0.82rem;
+        line-height: 1.9;
+        color: var(--color-muted);
+        margin: 0 0 var(--space-md);
+        padding: var(--space-sm) 0;
+        border-top: 1px solid var(--color-rule);
+        border-bottom: 1px solid var(--color-rule);
       }
-      ul {
-        margin: 0 0 1rem;
-        padding-left: 1.3rem;
+      .contents .label {
+        display: inline;
+        color: var(--color-ink);
+        font-weight: 600;
+        margin-right: var(--space-sm);
       }
-      li {
-        margin-bottom: 0.4rem;
+      .contents a {
+        color: var(--color-muted);
+        text-decoration: none;
+        white-space: nowrap;
       }
+      .contents a:hover,
+      .contents a:focus-visible {
+        color: var(--color-accent);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+      .contents a:focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 3px;
+        border-radius: 2px;
+      }
+      .contents .sep {
+        color: var(--color-rule);
+        margin: 0 var(--space-2xs);
+      }
+
+      /* ── Permissions table · editorial hairline ──────────────── */
       table {
         width: 100%;
         border-collapse: collapse;
-        margin: 0.5rem 0 1.5rem;
-        font-size: 0.92rem;
-        overflow: hidden;
-        border-radius: 8px;
+        margin: var(--space-md) 0;
+        font-size: 0.94rem;
+        line-height: 1.55;
       }
-      th,
-      td {
-        padding: 0.7rem 0.9rem;
+      caption {
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
         text-align: left;
-        border-bottom: 1px solid var(--border);
-        vertical-align: top;
+        color: var(--color-muted);
+        padding-bottom: var(--space-xs);
       }
-      th {
-        background: var(--bg-elev);
+      th, td {
+        text-align: left;
+        vertical-align: top;
+        padding: var(--space-sm) 0;
+        border-top: 1px solid var(--color-rule);
+      }
+      thead th {
+        border-top: 2px solid var(--color-ink);
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
         font-weight: 600;
-        color: var(--fg);
-        white-space: nowrap;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--color-muted);
+        padding: var(--space-xs) 0;
       }
       td:first-child {
-        font-family: var(--font-mono, monospace);
-        font-size: 0.85rem;
+        font-family: var(--font-mono);
+        font-size: 0.82rem;
+        font-weight: 500;
         white-space: nowrap;
-        color: var(--accent);
+        color: var(--color-accent);
+        width: 38%;
+        padding-right: var(--space-md);
       }
+      td:last-child {
+        color: var(--color-ink);
+      }
+      tbody tr:last-child td {
+        border-bottom: 1px solid var(--color-rule);
+      }
+
+      /* ── Inline code & links ──────────────────────────────────── */
       code {
-        font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 0.85em;
-        padding: 0.1em 0.35em;
-        border-radius: 4px;
-        background: var(--accent-soft);
-      }
-      .no {
-        color: var(--ok);
-        font-weight: 600;
-      }
-      .toc {
-        background: var(--bg-elev);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 1.25rem 1.5rem;
-        margin-bottom: 2.5rem;
-      }
-      .toc ol {
-        margin: 0;
-        padding-left: 1.4rem;
-      }
-      .toc li {
-        margin-bottom: 0.3rem;
-      }
-      .toc a {
-        color: var(--accent);
-        text-decoration: none;
-      }
-      .toc a:hover {
-        text-decoration: underline;
+        font-family: var(--font-mono);
+        font-size: 0.82em;
+        padding: 0.08em 0.35em;
+        border-radius: 3px;
+        background: var(--color-accent-soft);
+        color: var(--color-ink);
       }
       a {
-        color: var(--accent);
+        color: var(--color-accent);
+        text-decoration: underline;
+        text-decoration-color: var(--color-rule);
+        text-underline-offset: 3px;
+        text-decoration-thickness: 1px;
+        transition: text-decoration-color 200ms var(--ease-out, ease-out);
       }
-      footer {
-        max-width: 720px;
+      a:hover {
+        text-decoration-color: var(--color-accent);
+      }
+      a:focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 3px;
+        border-radius: 2px;
+      }
+      .doc-body strong {
+        font-weight: 600;
+        color: var(--color-ink);
+      }
+      .doc-body em {
+        font-style: italic;
+      }
+
+      /* ── Pull-aside · the "does NOT do" framing ───────────────── */
+      .aside {
+        margin: var(--space-lg) 0;
+        padding: var(--space-md) 0 var(--space-md) var(--space-md);
+        border-left: 2px solid var(--color-accent);
+      }
+      .aside .aside-label {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--color-accent);
+        margin: 0 0 var(--space-xs);
+      }
+      .aside ul {
+        margin: 0;
+      }
+
+      /* ── Ft6 · Letter close footer ────────────────────────────── */
+      .letter-close {
+        max-width: var(--measure);
         margin: 0 auto;
-        padding: 2rem 1.5rem 3rem;
-        border-top: 1px solid var(--border);
-        color: var(--fg-dim);
-        font-size: 0.88rem;
-        text-align: center;
+        padding: var(--space-2xl) var(--space-md) var(--space-2xl);
+        border-top: 1px solid var(--color-rule);
       }
-      footer a {
-        color: var(--fg-dim);
+      .letter-close .signoff {
+        font-family: var(--font-display);
+        font-style: italic;
+        font-size: 1.15rem;
+        color: var(--color-ink);
+        margin: 0 0 var(--space-2xs);
+      }
+      .letter-close .signoff .ampersand {
+        color: var(--color-accent);
+        font-style: normal;
+      }
+      .letter-close .meta {
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        line-height: 1.7;
+        color: var(--color-muted);
+      }
+      .letter-close .meta a {
+        color: var(--color-muted);
+      }
+      .letter-close .meta a:hover,
+      .letter-close .meta a:focus-visible {
+        color: var(--color-accent);
+      }
+      .letter-close .meta .sep {
+        color: var(--color-rule);
+        margin: 0 var(--space-2xs);
+      }
+
+      /* ── Reduced motion / mobile ──────────────────────────────── */
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
+      @media (max-width: 480px) {
+        body { font-size: 1rem; }
+        .doc-head h1 { font-size: 2.1rem; }
+        .lede p { font-size: 1.18rem; }
+        .lede p::first-letter { font-size: 3em; }
+        td:first-child { width: auto; white-space: normal; }
+        tr { display: block; margin-bottom: var(--space-md); }
+        th { display: none; }
+        td { border-top: none; padding: var(--space-3xs) 0; }
+        td:first-child { display: block; padding-top: var(--space-xs); }
+        td:last-child { display: block; padding-bottom: var(--space-xs); }
+        tbody tr { border-top: 1px solid var(--color-rule); }
+        tbody tr:last-child { border-bottom: 1px solid var(--color-rule); }
+        .contents { font-size: 0.78rem; }
+        .contents a { white-space: normal; }
       }
     </style>
   </head>
   <body>
-    <header>
-      <span class="badge">🔒 No data leaves your device</span>
-      <h1>Privacy Policy</h1>
-      <p class="effective">EqualLoud · Effective date: 2026-06-18 · Version 1.1.0</p>
-      <div class="tldr">
-        <strong>EqualLoud processes audio entirely on your device.</strong> It does not
-        collect, transmit, or sell any personal data. There are no analytics, no
-        telemetry, no trackers, and no third-party servers involved in its operation.
-      </div>
+    <!-- N9 · Edge-aligned minimal -->
+    <nav class="masthead" aria-label="Primary">
+      <a class="wordmark" href="https://github.com/mzaxd/EqualLoud">EqualLoud<span class="dot">.</span></a>
+      <a class="source-link" href="https://github.com/mzaxd/EqualLoud">Source ↗</a>
+    </nav>
+
+    <header class="doc-head">
+      <p class="kicker">§ Privacy</p>
+      <h1>Privacy, in one sentence.</h1>
+      <p class="dateline">EqualLoud · Effective 2026-06-18 · v1.1.0</p>
     </header>
 
-    <main>
-      <nav class="toc" aria-label="Contents">
-        <strong>Contents</strong>
-        <ol>
-          <li><a href="#what">What EqualLoud does</a></li>
-          <li><a href="#permissions">Permissions and why each is required</a></li>
-          <li><a href="#data">Data handling specifics</a></li>
-          <li><a href="#not">What EqualLoud does NOT do</a></li>
-          <li><a href="#children">Children's privacy</a></li>
-          <li><a href="#changes">Changes to this policy</a></li>
-          <li><a href="#source">Source code & contact</a></li>
-        </ol>
+    <div class="lede">
+      <p>
+        <strong>EqualLoud processes audio entirely on your device.</strong>
+        It does not collect, transmit, or sell any personal data. There are no
+        analytics, no telemetry, no trackers, and no third-party servers
+        involved in its operation.
+      </p>
+    </div>
+
+    <main class="doc-body">
+      <nav class="contents" aria-label="Contents">
+        <span class="label">Contents</span>
+        <a href="#what">What it does</a><span class="sep">·</span
+        ><a href="#permissions">Permissions</a><span class="sep">·</span
+        ><a href="#data">Data</a><span class="sep">·</span
+        ><a href="#not">What it doesn't do</a><span class="sep">·</span
+        ><a href="#children">Children</a><span class="sep">·</span
+        ><a href="#changes">Changes</a><span class="sep">·</span
+        ><a href="#source">Source</a>
       </nav>
 
       <section id="what">
-        <h2>What EqualLoud does</h2>
+        <h2><span class="num">01</span>What EqualLoud does</h2>
         <p>
-          EqualLoud is a browser extension that automatically balances the loudness of
-          audio/video tabs. It injects a content script into web pages so it can attach a
-          Web Audio graph to each <code>&lt;video&gt;</code> / <code>&lt;audio&gt;</code>
-          element, measure its loudness (using the ITU-R BS.1770 K-weighting algorithm),
-          and apply a gain adjustment so every tab converges to one target loudness.
+          EqualLoud is a browser extension that automatically balances the
+          loudness of audio/video tabs. It injects a content script into web
+          pages so it can attach a Web Audio graph to each
+          <code>&lt;video&gt;</code> / <code>&lt;audio&gt;</code> element,
+          measure its loudness (using the ITU-R BS.1770 K-weighting algorithm),
+          and apply a gain adjustment so every tab converges on one target
+          loudness.
         </p>
         <p><strong>All of this happens locally in your browser.</strong></p>
       </section>
 
       <section id="permissions">
-        <h2>Permissions and why each is required</h2>
+        <h2><span class="num">02</span>Permissions, and why each is required</h2>
+        <p>
+          Every permission the extension requests exists for one reason, and
+          none of them move data off your device:
+        </p>
         <table>
+          <caption>Permission manifest · v1.1.0</caption>
           <thead>
             <tr>
-              <th>Permission</th>
-              <th>Why it's needed</th>
+              <th scope="col">Permission</th>
+              <th scope="col">Why it's needed</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>host_permissions: &lt;all_urls&gt;</td>
               <td>
-                So balancing works automatically on every site, without per-site
-                enablement. The content script must run on the page to reach its media
-                elements. <strong>No page content is read or transmitted</strong> — only
-                the audio stream is measured locally.
+                So balancing works automatically on every site, without
+                per-site enablement. The content script must run on the page
+                to reach its media elements. <strong>No page content is read
+                or transmitted</strong> — only the audio stream is measured
+                locally.
               </td>
             </tr>
             <tr>
               <td>tabs</td>
               <td>
-                To list open tabs in the popup and show their titles. Tab titles and URLs
-                stay in local memory and are shown only to you in the popup.
+                To list open tabs in the popup and show their titles. Tab
+                titles and URLs stay in local memory and are shown only to
+                you in the popup.
               </td>
             </tr>
             <tr>
               <td>storage</td>
               <td>
-                To remember your settings (target loudness, limiter config, UI locale)
-                across browser restarts. Stored only in
+                To remember your settings (target loudness, limiter config,
+                UI locale) across browser restarts. Stored only in
                 <code>chrome.storage.local</code> on your device.
               </td>
             </tr>
             <tr>
               <td>alarms</td>
               <td>
-                A periodic housekeeping timer that prunes closed tabs and recovers state
-                after the service worker sleeps.
+                A periodic housekeeping timer that prunes closed tabs and
+                recovers state after the service worker sleeps.
               </td>
             </tr>
             <tr>
               <td>favicon (Chrome 118+)</td>
               <td>
-                Displays each tab's website icon in the popup. Served from Chrome's
-                <strong>local</strong> favicon cache via the
-                <code>_favicon/</code> API — no network request to the site or any third
-                party.
+                Displays each tab's website icon in the popup. Served from
+                Chrome's <strong>local</strong> favicon cache via the
+                <code>_favicon/</code> API — no network request to the site
+                or any third party.
               </td>
             </tr>
           </tbody>
@@ -289,62 +557,68 @@
       </section>
 
       <section id="data">
-        <h2>Data handling specifics</h2>
+        <h2><span class="num">03</span>Data handling specifics</h2>
         <ul>
           <li>
-            <strong>Audio:</strong> Processed in real time by the browser's Web Audio
-            API. Audio samples are never stored, logged, or sent anywhere. The loudness
-            numbers exist only transiently in memory to drive the gain decision.
+            <strong>Audio:</strong> Processed in real time by the browser's
+            Web Audio API. Audio samples are never stored, logged, or sent
+            anywhere. The loudness numbers exist only transiently in memory
+            to drive the gain decision.
           </li>
           <li>
-            <strong>Tab information (title, URL, favicon):</strong> Held in the
-            extension's memory only while the popup is open or the service worker is
-            active. Not persisted, not transmitted.
+            <strong>Tab information (title, URL, favicon):</strong> Held in
+            the extension's memory only while the popup is open or the
+            service worker is active. Not persisted, not transmitted.
           </li>
           <li>
             <strong>Settings:</strong> Stored locally via
             <code>chrome.storage.local</code>. Never leave your device.
           </li>
           <li>
-            <strong>Favicons:</strong> Before v1.1.0 the popup fetched favicons from
-            <code>google.com/s2/favicons</code>, which exposed the domains of your open
-            tabs to Google. <strong>This was removed in v1.1.0</strong> — favicons now
-            come from Chrome's local cache with zero network egress.
+            <strong>Favicons:</strong> Before v1.1.0 the popup fetched
+            favicons from <code>google.com/s2/favicons</code>, which exposed
+            the domains of your open tabs to Google. <strong>This was
+            removed in v1.1.0</strong> — favicons now come from Chrome's
+            local cache with zero network egress.
           </li>
         </ul>
       </section>
 
       <section id="not">
-        <h2>What EqualLoud does NOT do</h2>
-        <ul>
-          <li><span class="no">✓</span> No analytics or usage tracking.</li>
-          <li><span class="no">✓</span> No crash reporting that sends data off-device.</li>
-          <li><span class="no">✓</span> No advertising or ad SDKs.</li>
-          <li><span class="no">✓</span> No collection of personal information.</li>
-          <li><span class="no">✓</span> No communication with any server. The extension has no backend.</li>
-          <li><span class="no">✓</span> No sale or sharing of data with third parties.</li>
-        </ul>
+        <h2><span class="num">04</span>What EqualLoud does not do</h2>
+        <div class="aside">
+          <p class="aside-label">A short list, by design</p>
+          <ul class="no-list">
+            <li>No analytics or usage tracking.</li>
+            <li>No crash reporting that sends data off-device.</li>
+            <li>No advertising or ad SDKs.</li>
+            <li>No collection of personal information.</li>
+            <li>No communication with any server. The extension has no backend.</li>
+            <li>No sale or sharing of data with third parties.</li>
+          </ul>
+        </div>
       </section>
 
       <section id="children">
-        <h2>Children's privacy</h2>
+        <h2><span class="num">05</span>Children's privacy</h2>
         <p>
-          EqualLoud does not knowingly collect any data from anyone, including children
-          under 13. It is a general-purpose utility with no audience-targeting features.
+          EqualLoud does not knowingly collect any data from anyone,
+          including children under 13. It is a general-purpose utility with
+          no audience-targeting features.
         </p>
       </section>
 
       <section id="changes">
-        <h2>Changes to this policy</h2>
+        <h2><span class="num">06</span>Changes to this policy</h2>
         <p>
           Material changes will be reflected in this file and noted in
-          <code>CHANGELOG.md</code>. The extension version (visible in the popup footer)
-          tracks the code this policy applies to.
+          <code>CHANGELOG.md</code>. The extension version (visible in the
+          popup footer) tracks the code this policy applies to.
         </p>
       </section>
 
       <section id="source">
-        <h2>Source code &amp; contact</h2>
+        <h2><span class="num">07</span>Source code &amp; contact</h2>
         <p>
           EqualLoud is open source. You can audit every claim above at
           <a href="https://github.com/mzaxd/EqualLoud">github.com/mzaxd/EqualLoud</a>.
@@ -353,10 +627,14 @@
       </section>
     </main>
 
-    <footer>
-      <p>
-        EqualLoud ·
-        <a href="https://github.com/mzaxd/EqualLoud">Source on GitHub</a> ·
+    <!-- Ft6 · Letter close -->
+    <footer class="letter-close">
+      <p class="signoff">Yours, <span class="ampersand">&amp;</span> on-device.</p>
+      <p class="meta">
+        EqualLoud · 2026
+        <span class="sep">·</span>
+        <a href="https://github.com/mzaxd/EqualLoud">Source</a>
+        <span class="sep">·</span>
         <a href="https://github.com/mzaxd/EqualLoud/issues">Report an issue</a>
       </p>
     </footer>
