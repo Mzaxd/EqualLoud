@@ -37,6 +37,11 @@ function costOf(p: BalanceSimParams): number {
 }
 
 describe('warm-up calibration report', () => {
+  // 625 grid candidates × the full tune suite is a report generator, not a
+  // fast assertion: ~35 s locally, >100 s on CI runners. Raise the per-test
+  // timeout well past vitest's 60 s default (CI failure 33083108948).
+  const CALIBRATION_TIMEOUT_MS = 600_000
+
   it('prints baseline vs default-enabled vs grid winners', () => {
     const rows: Row[] = []
 
@@ -92,7 +97,7 @@ describe('warm-up calibration report', () => {
       warmupFullTrustBlocks: 4,
     })
     expect(capOnly).toBeLessThan(rows[0]!.cost * 1.02)
-  })
+  }, CALIBRATION_TIMEOUT_MS)
 
   it('differentiates legacy (slew off) vs default (slew on) smoother shapes', () => {
     // Cheap differential check: the same PRODUCTION_DEFAULTS decision params,
