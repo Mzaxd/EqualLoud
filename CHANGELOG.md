@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Eval coverage for startup slew.** The balance-algo eval suite gains a D5
+  startup-overshoot scenario, slew-rate modelling in the simulator, a
+  `warmup-tune` calibration report, and an S1 scenario in the tune suite to
+  drive and verify the new warm-up parameters.
+
+### Fixed
+- **Startup blast eliminated.** On quiet videos the balancer could apply its
+  full +24 dB boost ceiling for the first few hundred ms because the earliest
+  measurement window under-reads a quiet intro by 10–20 LU. Two safeguards:
+  gain *increases* are now slew-limited (+6 dB ≈ 0.3 s smooth swell, drops
+  still instant), and decisions made on fewer than four measurement blocks cap
+  boosts at +10 dB until the reading stabilises.
+
 ## [1.1.0] — 2026-06-18
 
 ### Added
