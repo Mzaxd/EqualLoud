@@ -227,3 +227,25 @@ describe('D4 — boost ceiling bounds unreachable quiet content', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// D5 — soft intro: startup blast from a quiet fade-in
+// ---------------------------------------------------------------------------
+
+describe('Group D — D5 soft intro', () => {
+  // 开头 0.6 s 低 10 LU 的淡入内容（读数≈-32 LUFS），随后进入正文（≈-22 LUFS，
+  // 正确稳态增益 ≈ +8 dB）。修复目标：开头过冲（输出越过 target 的峰值）< 3 LU。
+  it('bounds the startup blast from a quiet fade-in', () => {
+    const signal = pinkNoiseScenario(SR, [
+      { amplitudeDb: pinkAmpDbFor(-32), durationSec: 0.6 },
+      { amplitudeDb: pinkAmpDbFor(-22), durationSec: 9.4 },
+    ], 41)
+    const tab = runSingleScenario(
+      { id: 1, label: 'soft-intro fade-in', signal },
+      { scenario: 'D5 soft-intro', targetLufs: TARGET, durationSec: 10 },
+      { steadyWindowSec: 3 },
+    )
+    expect(tab.metrics.converged).toBe(true)
+    expect(tab.metrics.overshoot).toBeLessThan(3)
+  })
+})
