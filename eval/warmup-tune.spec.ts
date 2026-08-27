@@ -42,7 +42,7 @@ describe('warm-up calibration report', () => {
   // timeout well past vitest's 60 s default (CI failure 33083108948).
   const CALIBRATION_TIMEOUT_MS = 600_000
 
-  it('prints baseline vs default-enabled vs grid winners', () => {
+  it('prints baseline vs default-enabled vs grid winners', async () => {
     const rows: Row[] = []
 
     rows.push({
@@ -67,6 +67,11 @@ describe('warm-up calibration report', () => {
           })
           const row: Row = { label: `grid`, rise, cap, trust, cost }
           if (!best || cost < best.cost) best = row
+          // Each candidate is a CPU-synchronous simulation run; the whole grid
+          // blocks the worker >60 s, which trips vitest's internal RPC
+          // heartbeat ("Timeout calling onTaskUpdate", run 33084777827). Yield
+          // between candidates so the worker can answer it.
+          await new Promise((r) => setTimeout(r, 0))
         }
       }
     }
