@@ -76,3 +76,40 @@ describe('shouldThrottleBalance', () => {
     expect(shouldThrottleBalance(1000, 1101)).toBe(false)
   })
 })
+
+describe('computeBalanceGains warm-up boost cap', () => {
+  it('caps positive gain while blockCount < trust threshold', () => {
+    // 早窗口读数偏低：raw = -14 - (-38) = +24，暖机期压到 +10
+    const tabs = [makeTab({ shortTerm: -38, blockCount: 1, maxGainDb: 24 })]
+    expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: 10 }])
+  })
+
+  it('never caps above the tab ceiling', () => {
+    const tabs = [makeTab({ shortTerm: -30, blockCount: 1, maxGainDb: 8 })]
+    expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: 8 }])
+  })
+
+  it('lifts the cap once blockCount reaches the trust threshold', () => {
+    const tabs = [makeTab({ shortTerm: -38, blockCount: 4, maxGainDb: 24 })]
+    expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: 24 }])
+  })
+
+  it('does not affect negative gains', () => {
+    const tabs = [makeTab({ shortTerm: -5, blockCount: 1 })]
+    expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: -9 }])
+  })
+
+  it('stays bit-compatible with legacy behaviour when warm-up params are omitted', () => {
+    // 显式传旧形状的 params → cap 关闭；raw = -14 - (-38) = +24，仅受 maxGainDb 钳制
+    const tabs = [makeTab({ shortTerm: -38, blockCount: 1, maxGainDb: 24 })]
+    expect(
+      computeBalanceGains(tabs, -14, { minBlocks: 1, minGainDb: -60 }),
+    ).toEqual([{ tabId: 1, gainDb: 24 }])
+  })
+
+  it('respects raw values below the cap untouched', () => {
+    // raw = +6 < cap 10：正常通过（现有用例语义不变）
+    const tabs = [makeTab({ shortTerm: -20, maxGainDb: 24, blockCount: 1 })]
+    expect(computeBalanceGains(tabs, -14)).toEqual([{ tabId: 1, gainDb: 6 }])
+  })
+})
