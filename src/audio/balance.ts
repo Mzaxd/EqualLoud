@@ -14,6 +14,21 @@
 // measurably increasing ripple (Stage-1 sweep confirmed stable convergence).
 export const MIN_BLOCKS_FOR_RELIABLE_LUFS = 1
 
+/**
+ * Warm-up boost cap: while a tab has fewer than WARMUP_FULL_TRUST_BLOCKS
+ * samples, positive gains are additionally clamped to this value. The first
+ * early-block readings routinely sit 10+ LU below program loudness (fade-ins,
+ * musical intros), so uncapped decisions overshoot toward the boost ceiling
+ * for the first few hundred ms — the audible "startup blast". 10 covers the
+ * common early-read error band; negative gains are exempt (attenuation is
+ * always safe). Disabled when warmupBoostCapDb is undefined (legacy shape).
+ * Values finalised by eval/warmup-tune.spec.ts (plan Task 6).
+ */
+export const WARMUP_BOOST_CAP_DB = 10
+
+/** Blocks after which the warm-up cap lifts (~0.6 s: first block ~0.2 s + 4 hops ×0.1 s). */
+export const WARMUP_FULL_TRUST_BLOCKS = 4
+
 // Lower gain floor applied to every balanced tab (matches the slider floor).
 export const DEFAULT_MIN_GAIN = -60
 
@@ -32,12 +47,18 @@ export const DEFAULT_MIN_GAIN = -60
 export interface BalanceParams {
   minBlocks: number
   minGainDb: number
+  /** While blockCount < warmupFullTrustBlocks, clamp positive gains to this. Omit to disable. */
+  warmupBoostCapDb?: number
+  /** Trust threshold for the warm-up cap. Required when warmupBoostCapDb is set. */
+  warmupFullTrustBlocks?: number
 }
 
 /** Production defaults — the values every caller used before tuning existed. */
 export const DEFAULT_BALANCE_PARAMS: BalanceParams = {
   minBlocks: MIN_BLOCKS_FOR_RELIABLE_LUFS,
   minGainDb: DEFAULT_MIN_GAIN,
+  warmupBoostCapDb: WARMUP_BOOST_CAP_DB,
+  warmupFullTrustBlocks: WARMUP_FULL_TRUST_BLOCKS,
 }
 
 // Minimum spacing between auto-balance runs driven by the LUFS_UPDATE heartbeat.
@@ -99,7 +120,14 @@ export function computeBalanceGains(
     }
 
     const raw = targetLufs - tab.shortTerm
-    const clamped = Math.max(params.minGainDb, Math.min(tab.maxGainDb, raw))
+    let clamped = Math.max(params.minGainDb, Math.min(tab.maxGainDb, raw))
+    if (
+      clamped > 0 &&
+      params.warmupBoostCapDb !== undefined &&
+      tab.blockCount < (params.warmupFullTrustBlocks ?? Infinity)
+    ) {
+      clamped = Math.min(clamped, params.warmupBoostCapDb, tab.maxGainDb)
+    }
     decisions.push({ tabId: tab.tabId, gainDb: clamped })
   }
 

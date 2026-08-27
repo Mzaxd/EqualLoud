@@ -276,6 +276,18 @@ export function buildTuneSuite(): TuneScenario[] {
       durationSec: 14,
       tabs: [tabAt(1, -6, 14, 700)],
     },
+    {
+      // Startup-overshoot probe (warm-up calibration). A fresh tab starts at
+      // unity gain while the measurement window is still filling (~2 s dead
+      // zone); a quiet source then demands a large positive boost that arrives
+      // all at once unless the decision-path slew and warm-up cap shape it.
+      // Short duration on purpose — only the warm-up transient is under test,
+      // which the steady-state-oriented B/C/D/T scenarios barely see.
+      name: 'S1-startup-boost',
+      target: TARGET,
+      durationSec: 8,
+      tabs: [tabAt(1, -22, 8, 800)],
+    },
   ]
 }
 
@@ -294,7 +306,14 @@ export interface TuneCandidate {
   allConverged: boolean
 }
 
-/** The production defaults, evaluated as a baseline candidate for comparison. */
+/**
+ * Legacy both-mechanisms-off baseline, evaluated as a comparison candidate.
+ * Production defaults now include warmupBoostCapDb / warmupFullTrustBlocks /
+ * maxRiseDbPerSec (see src/audio/{balance,config}.ts and simulate.ts
+ * DEFAULT_GAIN_SMOOTHER); this constant intentionally omits them to serve as
+ * the pre-fix comparison baseline. Name kept for compatibility with tune.spec
+ * and other consumers.
+ */
 export const PRODUCTION_DEFAULTS: BalanceSimParams = {
   minBlocks: 1,
   minGainDb: -60,
@@ -385,8 +404,19 @@ export function expandLimiterGrid(
 /** Split BalanceSimParams into its balance + limiter + smoother halves. */
 function splitParams(p: BalanceSimParams) {
   return {
-    balance: { minBlocks: p.minBlocks, minGainDb: p.minGainDb },
-    smoother: { attackTc: p.attackTc, releaseTc: p.releaseTc },
+    balance: {
+      minBlocks: p.minBlocks,
+      minGainDb: p.minGainDb,
+      ...(p.warmupBoostCapDb !== undefined ? { warmupBoostCapDb: p.warmupBoostCapDb } : {}),
+      ...(p.warmupFullTrustBlocks !== undefined
+        ? { warmupFullTrustBlocks: p.warmupFullTrustBlocks }
+        : {}),
+    },
+    smoother: {
+      attackTc: p.attackTc,
+      releaseTc: p.releaseTc,
+      ...(p.maxRiseDbPerSec !== undefined ? { maxRiseDbPerSec: p.maxRiseDbPerSec } : {}),
+    },
     limiter: {
       thresholdDb: p.thresholdDb,
       ratio: p.ratio,

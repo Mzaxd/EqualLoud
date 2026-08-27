@@ -71,7 +71,7 @@ import {
   DEFAULT_BALANCE_PARAMS,
   type GainDecision,
 } from '../src/audio/balance'
-import { DEFAULT_LIMITER_SETTINGS } from '../src/audio/config'
+import { DEFAULT_LIMITER_SETTINGS, GAIN_RISE_RATE_DB_PER_S } from '../src/audio/config'
 import { LufsCalculator, dbToGain } from '../src/audio/lufs'
 import type { LimiterSettings } from '../src/messages/protocol'
 
@@ -115,12 +115,21 @@ export interface GainSmootherParams {
   attackTc: number
   /** Time constant (s) for gain *increases* (boosting quiet content). Mirrors GAIN_SMOOTH_TC. */
   releaseTc: number
+  /**
+   * Production mirrors audio-graph's GainSlew: the DECIDED setpoint itself is
+   * slew-limited (rises ≤ this many dB/s at TICK_SEC granularity, drops
+   * instant). Omit to disable (legacy sim behaviour). Note: the production
+   * implementation also caps single-step credit via maxStepMs=500ms; sim ticks
+   * are uniform so the cap never binds here and is not modelled.
+   */
+  maxRiseDbPerSec?: number
 }
 
 /** Production defaults — mirrors config.ts GAIN_ATTACK_TC / GAIN_SMOOTH_TC. */
 export const DEFAULT_GAIN_SMOOTHER: GainSmootherParams = {
   attackTc: 0.02,
   releaseTc: 0.05,
+  maxRiseDbPerSec: GAIN_RISE_RATE_DB_PER_S,
 }
 
 // ---------------------------------------------------------------------------
@@ -396,6 +405,8 @@ interface TabState {
    * τ selection. Starts at 0 dB (unity) like a freshly-attached tab.
    */
   decidedGainDb: number
+  /** Last output of the decision-path slew limiter (spec §1). Starts at 0 dB. */
+  slewGainDb: number
   /**
    * Gain *actually applied* to this tick's audio, after smoothing. This is
    * what the listener hears and what the LUFS calculator measures. When the
@@ -435,6 +446,7 @@ export function runBalanceSim(tabs: SimTabInput[], opts: SimOptions): SimTabResu
       // its first LUFS_REPORT reaches the SW (background.ts applies the first
       // decision only after MEDIA_ATTACHED + at least one heartbeat).
       decidedGainDb: 0,
+      slewGainDb: 0,
       effectiveGainDb: 0,
       blockCountTick: 0,
       trace: [] as SimTraceRow[],
@@ -506,7 +518,16 @@ export function runBalanceSim(tabs: SimTabInput[], opts: SimOptions): SimTabResu
       // enough samples yet), hold the previous gain — matching production,
       // where the SW simply doesn't send a new SET_GAIN and the content script
       // keeps the last applied value.
-      if (newDecided !== undefined) s.decidedGainDb = newDecided
+      if (newDecided !== undefined) {
+        // Decision-path slew (production: GainSlew inside setGain). Falls pass
+        // through instantly; rises advance at most maxRiseDbPerSec·TICK_SEC.
+        const prev = s.slewGainDb
+        s.slewGainDb =
+          smoother.maxRiseDbPerSec === undefined || newDecided <= prev
+            ? newDecided
+            : Math.min(newDecided, prev + smoother.maxRiseDbPerSec * TICK_SEC)
+        s.decidedGainDb = s.slewGainDb
+      }
 
       // Advance the smoother by one tick toward the (possibly updated) setpoint.
       // Direction-aware τ mirrors audio-graph.ts: decreases attack fast, increases

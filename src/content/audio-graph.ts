@@ -40,8 +40,9 @@
  *      jump. The autoplay warning disappears because creation happens in-gesture.
  */
 
-import { GAIN_ATTACK_TC, GAIN_SMOOTH_TC } from '@/audio/config'
+import { GAIN_ATTACK_TC, GAIN_RISE_RATE_DB_PER_S, GAIN_SMOOTH_TC } from '@/audio/config'
 import { dbToGain } from '@/audio/lufs'
+import { GainSlew } from '@/audio/gain-slew'
 import type { LimiterSettings } from '@/messages/protocol'
 import { createLogger } from '@/utils/logger'
 import lufsProcessorUrl from '@/worklets/lufs-processor?worker&url'
@@ -485,6 +486,10 @@ function buildWebAudioHandle(
   // when boosting a quiet one up. Initial GainNode.gain.value is 1.0 == 0 dB.
   let currentGainDb = 0
 
+  // Slew limiter on the DECISION path: rises capped, drops instant. Starts at
+  // 0 dB, matching GainNode.gain.value's factory default on a fresh chain.
+  const slew = new GainSlew({ maxRiseDbPerSec: GAIN_RISE_RATE_DB_PER_S })
+
   // Playback chain: source -> gain -> limiter -> destination
   source.connect(gain)
   gain.connect(limiter)
@@ -558,14 +563,20 @@ function buildWebAudioHandle(
   return {
     setGain(gainDb: number) {
       if (ctx.state === 'closed') return
+      // Direction-aware smoothing unchanged (see below), but the setpoint first
+      // passes the slew limiter: rises may only climb GAIN_RISE_RATE_DB_PER_S, drops
+      // land instantly. The volume-fallback path needs no slewing (it cannot
+      // boost). Verified offline via eval/ scenarios + manual listening; no
+      // unit test per the project's pure-functions-only rule.
+      const slewed = slew.next(gainDb, performance.now())
       // Direction-aware smoothing: a decrease (loud → target) attacks fast
       // because reducing gain never clicks; an increase (quiet → target)
       // releases slowly to avoid zipper noise. This is the asymmetry you want
       // for a loudness balancer — the painful case is a too-loud source, and
       // that's the one we now resolve in ~60 ms instead of ~150 ms.
-      const tc = gainDb < currentGainDb ? GAIN_ATTACK_TC : GAIN_SMOOTH_TC
-      gain.gain.setTargetAtTime(dbToGain(gainDb), ctx.currentTime, tc)
-      currentGainDb = gainDb
+      const tc = slewed < currentGainDb ? GAIN_ATTACK_TC : GAIN_SMOOTH_TC
+      gain.gain.setTargetAtTime(dbToGain(slewed), ctx.currentTime, tc)
+      currentGainDb = slewed
     },
     setLimiter(settings) {
       applyLimiter(limiter, ctx.currentTime, settings)

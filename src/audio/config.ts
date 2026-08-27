@@ -76,6 +76,14 @@ export const GAIN_SMOOTH_TC = 0.05
  */
 export const GAIN_ATTACK_TC = 0.02
 
+/**
+ * Upward gain slew rate cap applied by GainSlew at the setGain entry point.
+ * +6 dB arrives in ~0.3 s as a smooth swell; a wrong (too-high) decision can
+ * only climb rate × time-before-correction before the corrected decision
+ * lands, so startup blasts are bounded instead of instantaneous (spec §1.3).
+ */
+export const GAIN_RISE_RATE_DB_PER_S = 20
+
 /** How often the content script reports its measured LUFS to the SW (Hz). */
 export const LUFS_REPORT_HZ = 10
 
