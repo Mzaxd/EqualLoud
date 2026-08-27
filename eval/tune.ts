@@ -306,7 +306,14 @@ export interface TuneCandidate {
   allConverged: boolean
 }
 
-/** The production defaults, evaluated as a baseline candidate for comparison. */
+/**
+ * Legacy both-mechanisms-off baseline, evaluated as a comparison candidate.
+ * Production defaults now include warmupBoostCapDb / warmupFullTrustBlocks /
+ * maxRiseDbPerSec (see src/audio/{balance,config}.ts and simulate.ts
+ * DEFAULT_GAIN_SMOOTHER); this constant intentionally omits them to serve as
+ * the pre-fix comparison baseline. Name kept for compatibility with tune.spec
+ * and other consumers.
+ */
 export const PRODUCTION_DEFAULTS: BalanceSimParams = {
   minBlocks: 1,
   minGainDb: -60,

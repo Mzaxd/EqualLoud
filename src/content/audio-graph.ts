@@ -564,7 +564,7 @@ function buildWebAudioHandle(
     setGain(gainDb: number) {
       if (ctx.state === 'closed') return
       // Direction-aware smoothing unchanged (see below), but the setpoint first
-      // passes the slew limiter: rises may only climb GAIN_RISE_DB_PER_S, drops
+      // passes the slew limiter: rises may only climb GAIN_RISE_RATE_DB_PER_S, drops
       // land instantly. The volume-fallback path needs no slewing (it cannot
       // boost). Verified offline via eval/ scenarios + manual listening; no
       // unit test per the project's pure-functions-only rule.
