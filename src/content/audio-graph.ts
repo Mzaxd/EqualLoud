@@ -100,6 +100,46 @@ let workletReady: Promise<void> | null = null
 const attachedSources = new WeakSet<HTMLMediaElement>()
 
 /**
+ * Elements that have already received a `MediaElementAudioSourceNode`. Web
+ * Audio allows an element to be claimed by `createMediaElementSource` exactly
+ * once per document — a second call throws InvalidStateError, and from that
+ * first claim on the element's audio exists ONLY inside the graph. Keeping the
+ * node here lets a re-attach (SPA removes and re-inserts the element, bfcache
+ * restore after our pagehide teardown) reuse the original source instead of
+ * retrying `createMediaElementSource`, which would throw, degrade to volume
+ * control, and leave the element playing permanent silence. See buildWebAudioHandle.
+ */
+const takenSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>()
+
+/**
+ * Whether routing this element through `createMediaElementSource` would taint
+ * the graph into **permanent silence**: a cross-origin resource fetched WITHOUT
+ * CORS clearance (`crossOrigin` attribute unset) may be connected, but Chrome
+ * outputs digital zero from then on. Crucially the call itself SUCCEEDS, so no
+ * try/catch can catch it — eligibility must be checked before takeover.
+ *
+ * Same-origin, blob:, data: and MSE (`srcObject` / MediaSource) flows are not
+ * tainted; an explicit `crossOrigin="anonymous"|"use-credentials"` attribute
+ * means the fetch goes through CORS and is fine too. Exported for tests.
+ */
+export function isCorsTainted(
+  el: Pick<HTMLMediaElement, 'crossOrigin' | 'currentSrc' | 'src'>,
+  pageUrl: string = typeof location !== 'undefined' ? location.href : 'https://localhost/',
+): boolean {
+  // undefined (not just null) must read as "not tainted": fake elements in
+  // tests / odd embeddings don't carry the property, and failing open keeps
+  // them on the historical path instead of dropping their measurement branch.
+  if (((el.crossOrigin as string | null | undefined) ?? null) !== null) return false
+  const src = el.currentSrc || el.src
+  if (!src) return false
+  try {
+    return new URL(src, pageUrl).origin !== new URL(pageUrl).origin
+  } catch {
+    return false
+  }
+}
+
+/**
  * Elements that received a lazy (volume-only) handle and are waiting for the
  * first user gesture to be upgraded to a full Web Audio chain. Each entry
  * keeps the upgrade target alive so a late gesture still wires up the element.
@@ -284,6 +324,14 @@ export function ensureContextAndUpgrade(): boolean {
  */
 export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null {
   if (attachedSources.has(el)) return null
+
+  // Take-over eligibility check (before claiming): a cross-origin element
+  // without a crossOrigin attribute goes PERMANENTLY SILENT once routed through
+  // createMediaElementSource — the call succeeds, so nothing downstream can
+  // detect it. Such elements get an attenuation-only volume handle and are
+  // never queued for upgrade.
+  const corsTainted = isCorsTainted(el)
+
   // Claim the element up front so any concurrent attach for the same element
   // short-circuits regardless of which internal path (web-audio vs volume
   // fallback) this one ends up on. buildWebAudioHandle used to do this only on
@@ -295,18 +343,29 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
   // is invalidated and all elements have detached (see maybeCloseSharedContext).
   activeHandleCount++
 
-  // Already handshaken (e.g. SPA adds media after the first gesture): build the
-  // full chain right away, no lazy phase needed. Wrap the dispose so the
-  // counter still decrements on teardown.
-  if (contextHandshaken && sharedCtx && sharedCtx.state !== 'closed') {
-    const direct = buildWebAudioHandle(el) ?? makeVolumeFallback(el)
-    const origDispose = direct.dispose.bind(direct)
-    direct.dispose = () => {
+  /** Shared dispose wrapper: bookkeep lifetime + re-check context teardown. */
+  const withLifetime = (h: AudioGraphHandle): AudioGraphHandle => {
+    const origDispose = h.dispose.bind(h)
+    h.dispose = () => {
       origDispose()
       activeHandleCount = Math.max(0, activeHandleCount - 1)
       maybeCloseSharedContext()
     }
-    return direct
+    return h
+  }
+
+  // CORS-tainted: permanent volume fallback. Deliberately NOT pushed onto the
+  // pending list — an upgrade would route the element into a silent graph.
+  if (corsTainted) {
+    log.debug('cross-origin media without CORS; volume-only control')
+    return withLifetime(makeVolumeFallback(el))
+  }
+
+  // Already handshaken (e.g. SPA adds media after the first gesture): build the
+  // full chain right away, no lazy phase needed.
+  if (contextHandshaken && sharedCtx && sharedCtx.state !== 'closed') {
+    const direct = buildWebAudioHandle(el) ?? makeVolumeFallback(el)
+    return withLifetime(direct)
   }
 
   // Lazy phase. `current` holds the active impl (volume fallback → full chain);
@@ -359,6 +418,12 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
       if (disposed) return
       disposed = true
       pendingEntry.done = true
+      // Remove the entry outright: a dispose-before-gesture element that stays
+      // in `pending` would pin the HTMLMediaElement (and any detached DOM
+      // subtree around it) until navigation — feed pages churning clips before
+      // the first click accumulated exactly that leak.
+      const pIdx = pending.indexOf(pendingEntry)
+      if (pIdx >= 0) pending.splice(pIdx, 1)
       lufsCbs.clear()
       current.dispose()
       attachedSources.delete(el)
@@ -392,7 +457,20 @@ function buildWebAudioHandle(
   try {
     // This can throw: InvalidStateError if the page already took the element,
     // or silent DRM-mute on protected content.
-    source = ctx.createMediaElementSource(el)
+    //
+    // An element WE previously claimed (SPA detach → re-insert, bfcache
+    // restore after pagehide teardown) must be reused from `takenSources`
+    // instead of re-created: the second createMediaElementSource call always
+    // throws, and falling back to volume control while the element's audio is
+    // still routed into the old (now disconnected) graph would mute it for
+    // good. Reconnecting a kept-alive source node revives the audio.
+    const existing = takenSources.get(el)
+    if (existing) {
+      source = existing
+    } else {
+      source = ctx.createMediaElementSource(el)
+      takenSources.set(el, source)
+    }
   } catch (err) {
     log.warn('createMediaElementSource failed; degrading to volume', err)
     return null
@@ -431,6 +509,14 @@ function buildWebAudioHandle(
         numberOfInputs: 1,
         numberOfOutputs: 1,
         outputChannelCount: [2],
+        // Downmix explicitly to stereo inside the node: the default 'max'
+        // channelCountMode would hand a 5.1 element's raw 6 channels to the
+        // processor, which reads only input[0]/input[1] — dropping centre/
+        // LFE energy and biasing LUFS several dB low (over-boosting those
+        // tabs into the limiter). 'speakers' interpretation = plain L/R downmix.
+        channelCount: 2,
+        channelCountMode: 'explicit',
+        channelInterpretation: 'speakers',
       })
     } catch (err) {
       // Worklet construct failed (e.g. module never registered under that name).
@@ -594,11 +680,25 @@ function applyLimiter(node: DynamicsCompressorNode, time: number, settings: Limi
 // ---------------------------------------------------------------------------
 
 function makeVolumeFallback(el: HTMLMediaElement): AudioGraphHandle {
+  /**
+   * The element's volume as the site/user had it, captured the first time we
+   * actually attenuate. Restored on dispose so un-hooking an element doesn't
+   * leave it parked at whatever level EqualLoud last drove.
+   */
+  let baseVolume: number | null = null
   return {
-    // volume is 0..1, so negative dB attenuates; positive dB is ignored.
+    // Attenuate-only, relative to the captured base. The SW drives cold /
+    // bypassed / fallback tabs at a constant 0 dB ~10×/s — treating that as
+    // "set el.volume = dbToGain(0) = 1" would stomp the site's own slider
+    // (e.g. Netflix volume pinned to max) or blast a site-restored low
+    // volume during the pre-gesture lazy phase. Unity-or-boost is therefore
+    // a no-op; only decisions below 0 dB touch el.volume, scaled off base so
+    // a page-set 30% stays 30%-shaped under EqualLoud attenuation.
     setGain(gainDb: number) {
+      if (gainDb >= 0) return
+      if (baseVolume === null) baseVolume = el.volume
       const linear = dbToGain(gainDb)
-      el.volume = Math.max(0, Math.min(1, linear))
+      el.volume = Math.max(0, Math.min(1, baseVolume * linear))
     },
     setLimiter() {
       /* no-op: volume fallback cannot limit */
@@ -611,7 +711,7 @@ function makeVolumeFallback(el: HTMLMediaElement): AudioGraphHandle {
       /* no worklet to reset in fallback mode */
     },
     dispose() {
-      /* nothing to release */
+      if (baseVolume !== null) el.volume = baseVolume
     },
   }
 }

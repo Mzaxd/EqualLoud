@@ -85,11 +85,18 @@ describe('InfoTip', () => {
     expect(wrapper.find('.info-tip-icon').text()).toBe('?')
   })
 
-  it('does not render the bubble in the component tree (it teleports to body on open)', () => {
+  it('keeps the bubble out of the component tree and hidden while closed', () => {
     const wrapper = mountComponent('The threshold meaning')
-    // The bubble is v-if-gated on `open`; before hover it is not in the DOM at all.
-    expect(wrapper.find('.info-tip-bubble').exists()).toBe(false)
-    expect(document.body.querySelector('.info-tip-bubble')).toBeNull()
+    // The bubble is teleported to body and rendered with v-show: it lives in
+    // the DOM permanently (a stable aria-describedby target) but stays hidden
+    // until hover/focus.
+    expect(wrapper.find('.info-tip-bubble').exists()).toBe(false) // outside wrapper
+    const bubble = document.body.querySelector('.info-tip-bubble') as HTMLElement | null
+    expect(bubble).not.toBeNull()
+    expect(bubble!.style.display).toBe('none')
+    // …and the trigger references it for assistive tech.
+    const describedBy = wrapper.find('.info-tip').attributes('aria-describedby')
+    expect(describedBy).toBeTruthy()
   })
 
   it('is keyboard-focusable for accessibility', () => {
@@ -165,12 +172,15 @@ describe('InfoTip', () => {
     expect(bubbleEl().classList.contains('placement-bottom')).toBe(false)
   })
 
-  it('removes the bubble from the DOM on mouseleave', async () => {
+  it('hides the bubble (display:none) on mouseleave', async () => {
     mockViewport(150)
     const wrapper = mountComponent('Short tip')
     await wrapper.find('.info-tip').trigger('mouseenter')
     expect(bubbleEl()).not.toBeNull()
+    expect(bubbleEl().style.display).not.toBe('none')
     await wrapper.find('.info-tip').trigger('mouseleave')
-    expect(document.body.querySelector('.info-tip-bubble')).toBeNull()
+    const bubble = document.body.querySelector('.info-tip-bubble') as HTMLElement | null
+    expect(bubble).not.toBeNull() // kept in DOM (stable id), just hidden
+    expect(bubble!.style.display).toBe('none')
   })
 })

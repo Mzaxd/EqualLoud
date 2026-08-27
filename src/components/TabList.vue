@@ -144,11 +144,12 @@ const globalEnabled = computed(() => tabsStore.isAutoBalancing)
           </span>
           <span class="ttitle">{{ tab.title }}</span>
 
+          <!-- No aria-live here: this readout churns at the ~10 Hz balance
+               rate and a live region on it floods screen-reader announcement
+               queues; the row label + tooltip already convey the state. -->
           <span
             v-if="globalEnabled && tab.balanceEnabled && !isAnalyzing(tab)"
             :class="gainClass(tab.appliedGainDb)"
-            aria-live="polite"
-            aria-atomic="true"
           >
             {{ formatGain(tab.appliedGainDb) }}
           </span>
@@ -348,10 +349,13 @@ const globalEnabled = computed(() => tabsStore.isAutoBalancing)
   }
 }
 
-/* Row transitions */
+/* Row transitions — enumerate properties (opacity + transform are the only
+ * ones the enter/leave states touch). */
 .tab-item-enter-active,
 .tab-item-leave-active {
-  transition: all 0.25s ease;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
 }
 
 .tab-item-enter-from {

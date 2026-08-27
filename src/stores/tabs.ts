@@ -97,6 +97,9 @@ export const useTabsStore = defineStore('tabs', () => {
       if ('tabs' in r && r.tabs) tabs.value = r.tabs
       if ('settings' in r && r.settings) settings.value = r.settings
       if ('limiter' in r && r.limiter) limiter.value = r.limiter
+      // A resolved GET_STATE proves the SW is alive — reset the reconnect
+      // backoff here (not on every connect attempt, see startConnection).
+      reconnectDelayMs = 100
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to fetch state'
     }
@@ -119,7 +122,15 @@ export const useTabsStore = defineStore('tabs', () => {
   }
 
   async function toggleAutoBalance(): Promise<void> {
-    await setAutoBalanceEnabled(!settings.value.enabled)
+    // Optimistic flip + rollback: the local mirror only updates after the SW
+    // round-trip otherwise, so two quick clicks both read the OLD value and
+    // send the same SET_ENABLED twice — a double-click collapsing into a
+    // single "off". Flipping locally first makes the second click compute the
+    // inverse; a failed round-trip rolls the mirror back to the truth.
+    const next = !settings.value.enabled
+    settings.value = { ...settings.value, enabled: next }
+    const ok = await setAutoBalanceEnabled(next)
+    if (!ok) settings.value = { ...settings.value, enabled: !next }
   }
 
   async function setTargetLufs(value: number): Promise<boolean> {
@@ -253,12 +264,19 @@ export const useTabsStore = defineStore('tabs', () => {
       }
       if (m.type !== 'STATE_PUSH') return
       applyState({ tabs: m.tabs, settings: m.settings, limiter: m.limiter })
+      // First pushed snapshot on a (re)connect proves the link is alive.
+      // The reset MUST NOT live in startConnection itself: that runs again on
+      // every reconnect attempt, and resetting there made the "exponential"
+      // backoff oscillate 100→200→100 ms forever, hammering an unreachable SW
+      // several times per second for the popup's whole lifetime.
+      reconnectDelayMs = 100
     })
     port.onDisconnect.addListener(() => {
       port = null
       // SW recycled the Port (memory pressure, idle, or extension reload).
       // Reconnect with capped exponential backoff so we recover without
-      // pestering the SW. Cleared on explicit stopConnection().
+      // pestering the SW. Cleared on explicit stopConnection(); the delay only
+      // resets once traffic actually flows (see the two liveness sites above).
       if (reconnectTimer === null) {
         reconnectTimer = window.setTimeout(() => {
           reconnectTimer = null
@@ -267,8 +285,6 @@ export const useTabsStore = defineStore('tabs', () => {
         }, reconnectDelayMs)
       }
     })
-    // A fresh successful connect resets the backoff.
-    reconnectDelayMs = 100
   }
 
   function stopConnection(): void {

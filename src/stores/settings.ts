@@ -60,6 +60,39 @@ export const useSettingsStore = defineStore(
       localeManuallySet.value = true
     }
 
+    // ── Cross-context sync ─────────────────────────────────────────────────
+    // The popup and the standalone options page are two documents writing the
+    // SAME localStorage key ('popupSettings'). pinia-plugin-persistedstate
+    // serialises the whole picked object on every mutation and does NOT listen
+    // for writes from elsewhere — so with both surfaces open, the next write
+    // from one clobbered the other's change with its own stale snapshot (a
+    // lost-update race). The 'storage' event fires in every OTHER same-origin
+    // document, which is exactly the missing reconciliation channel: re-hydrate
+    // this instance's refs from whatever the other surface just persisted.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', (e) => {
+        if (e.key !== 'popupSettings' || !e.newValue) return
+        let snap: Partial<{
+          locale: string
+          localeManuallySet: boolean
+          lastNoticeVersion: string | null
+          professionalMode: boolean
+        }>
+        try {
+          snap = JSON.parse(e.newValue) as typeof snap
+        } catch {
+          return // malformed payload — keep current state
+        }
+        if (typeof snap.locale === 'string') locale.value = normalizeLocaleCode(snap.locale)
+        if (typeof snap.localeManuallySet === 'boolean')
+          localeManuallySet.value = snap.localeManuallySet
+        if (snap.lastNoticeVersion === null || typeof snap.lastNoticeVersion === 'string')
+          lastNoticeVersion.value = snap.lastNoticeVersion
+        if (typeof snap.professionalMode === 'boolean')
+          professionalMode.value = snap.professionalMode
+      })
+    }
+
     return {
       locale,
       localeManuallySet,

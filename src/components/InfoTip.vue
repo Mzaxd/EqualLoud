@@ -25,7 +25,7 @@
  *     within the viewport (checked directly against `vh`, no ancestor walk).
  * The arrow tracks the icon's horizontal center so it always points at the "?".
  */
-import { nextTick, ref } from 'vue'
+import { nextTick, ref, useId } from 'vue'
 
 defineOptions({ name: 'InfoTip' })
 
@@ -36,6 +36,14 @@ defineProps<{
 
 /** Whether the bubble is currently open (drives Teleport render + visibility). */
 const open = ref(false)
+
+/**
+ * Stable id for the teleported bubble so the trigger can reference its content
+ * via aria-describedby (the tooltip content is otherwise not announced as
+ * being "about" this icon). v-show (not v-if) keeps that id resolvable at all
+ * times while still removing the bubble from the visual layout when closed.
+ */
+const bubbleId = useId()
 
 /**
  * Inline style applied to the fixed-positioned bubble. `top`/`left` are
@@ -113,25 +121,37 @@ function hide(): void {
 </script>
 
 <template>
+  <!-- Keyboard contract: Enter/Space toggle the bubble (role=button without a
+       key handler is an a11y lie — either ship the handler or drop the role;
+       we ship both here). Escape closes. aria-describedby ties this trigger to
+       its bubble content for assistive tech. -->
   <span
     ref="rootRef"
     class="info-tip"
     tabindex="0"
     role="button"
     :aria-label="tip"
+    :aria-describedby="bubbleId"
+    :aria-expanded="open"
     @mouseenter="show"
     @focus="show"
     @mouseleave="hide"
     @blur="hide"
+    @keydown.enter.prevent="open ? hide() : show()"
+    @keydown.space.prevent="open ? hide() : show()"
+    @keydown.escape.prevent="hide"
   >
     <span class="info-tip-icon">?</span>
   </span>
 
   <!-- Teleported to <body> so the bubble escapes every overflow:hidden ancestor
-       inside the popup. position:fixed anchors it to the viewport directly. -->
+       inside the popup. position:fixed anchors it to the viewport directly.
+       v-show (not v-if): the stable DOM node keeps `getBoundingClientRect`
+       measurable on re-open and keeps the aria-describedby target alive. -->
   <Teleport to="body">
     <span
-      v-if="open"
+      v-show="open"
+      :id="bubbleId"
       ref="bubbleRef"
       class="info-tip-bubble"
       :class="`placement-${placement}`"
@@ -169,7 +189,10 @@ function hide(): void {
   font-weight: 700;
   line-height: 1;
   background: var(--surface);
-  transition: all 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .info-tip:hover .info-tip-icon,

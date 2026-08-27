@@ -124,4 +124,43 @@ describe('TruePeakTracker', () => {
     // (vs. the offline full convolution) plus decay, so it's approximate.
     expect(Math.abs(streamTp - offlineTp)).toBeLessThan(2.5)
   })
+
+  /**
+   * Strict parity: the tracker implements the SAME tap windows as the offline
+   * convolution via a 2-sample look-back delay, so on signals shorter than one
+   * decay interval (4800 samples @ 48 kHz — keeps the decay out of the math)
+   * the two must agree to within float error. The cases below are the ones
+   * where a missing lookahead under-reads most: an alternating ±1 square (the
+   * canonical inter-sample worst case, ≈ +1.60 dBTP) and a near-Nyquist tone.
+   */
+  const assertStrictParity = (samples: number[], sr = 48000): void => {
+    const offlineTp = computeTruePeakDb(samples)
+    expect(offlineTp).toBeGreaterThan(-Infinity)
+    const t = new TruePeakTracker(sr)
+    for (const s of samples) t.processSample(s)
+    expect(Math.abs(t.getDbtp() - offlineTp)).toBeLessThan(0.05)
+  }
+
+  it('strict parity on the alternating +1/−1 worst case', () => {
+    const samples = Array.from({ length: 2048 }, (_, i) => (i % 2 === 0 ? 1 : -1))
+    // Sanity: this signal genuinely produces inter-sample overshoot (~+1.6 dBTP).
+    expect(computeTruePeakDb(samples)).toBeCloseTo(1.6, 1)
+    assertStrictParity(samples)
+  })
+
+  it('strict parity on an 18 kHz near-Nyquist tone', () => {
+    const sr = 48000
+    const samples = Array.from({ length: 4096 }, (_, i) =>
+      Math.sin((2 * Math.PI * 18000 * i) / sr + 0.3),
+    )
+    assertStrictParity(samples, sr)
+  })
+
+  it('decayed reading still recedes after silence (regression: delayed eval)', () => {
+    // The lookahead delay must not break the decay contract.
+    const t = new TruePeakTracker(48000)
+    for (let i = 0; i < 500; i++) t.processSample(1.0)
+    for (let i = 0; i < 30000; i++) t.processSample(0)
+    expect(t.getDbtp()).toBeLessThan(-6)
+  })
 })

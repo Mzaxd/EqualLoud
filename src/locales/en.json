@@ -6,7 +6,7 @@
     "tabCount": "{count} tab | {count} tabs",
     "status": {
       "balancing": "Balancing {count} tab(s)",
-      "waiting": "Waiting for audio...",
+      "waiting": "Waiting for audio…",
       "disabled": "Volume balancing is off"
     }
   },
@@ -81,7 +81,7 @@
   },
   "tabs": {
     "empty": {
-      "title": "Waiting for audio...",
+      "title": "Waiting for audio…",
       "hint": "Open a tab with audio and it will be balanced automatically"
     },
     "balance": {
@@ -91,7 +91,7 @@
       "dash": "—"
     },
     "status": {
-      "collecting": "Analyzing...",
+      "collecting": "Analyzing…",
       "ready": "Balanced"
     }
   },
@@ -101,7 +101,7 @@
     "collapse": "Close settings"
   },
   "lufs": {
-    "collecting": "Analyzing..."
+    "collecting": "Analyzing…"
   },
   "updateNotice": {
     "text": "EqualLoud was updated. Refresh your playing tabs to restore balance.",
@@ -119,6 +119,7 @@
     "getStarted": "Get started",
     "next": "Next",
     "back": "Back",
+    "goToStep": "Go to step {n}",
     "privacyLink": "Privacy policy"
   },
   "options": {

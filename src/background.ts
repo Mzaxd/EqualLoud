@@ -186,6 +186,8 @@ function ensureTab(
 
 function removeTab(tabId: number): void {
   tabs.delete(tabId)
+  // Keep the strike counter from leaking entries for tabs we already dropped.
+  pingFailures.delete(tabId)
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +228,7 @@ async function balanceOnce(): Promise<void> {
   }
   // Apply to in-memory state synchronously, then dispatch SET_GAIN in parallel
   // (serial dispatch delayed the last tab's update by a round-trip per prior tab).
-  const sends: Promise<void>[] = []
+  const sends: Promise<boolean>[] = []
   for (const d of decisions) {
     const t = tabs.get(d.tabId)
     if (!t) continue
@@ -259,12 +261,17 @@ function maybeBalance(force = false): void {
 // Messaging: SW → content script
 // ---------------------------------------------------------------------------
 
-async function sendToTab(tabId: number, message: unknown): Promise<void> {
+async function sendToTab(tabId: number, message: unknown): Promise<boolean> {
   try {
     await chrome.tabs.sendMessage(tabId, message)
+    return true
   } catch {
     // Tab may have navigated/closed before we could deliver; it'll either
     // re-attach on next MEDIA_ATTACHED or get cleaned up on the next alarm.
+    // Returning the outcome lets the alarm sweep tell "no content script"
+    // apart from a delivered ping (the old swallowing version kept ghost rows
+    // for discarded tabs alive forever).
+    return false
   }
 }
 
@@ -536,6 +543,17 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   const t = tabs.get(tabId)
   if (!t) return
+  if (info.url !== undefined && !/^https?:/i.test(info.url)) {
+    // A capturing tab navigated to a non-http(s) URL (chrome://, file:, …):
+    // the content script is gone and the scheme filter in scanTabs would
+    // never revisit this tabId, so the row survived every prune pass as a
+    // ghost with stale meters. Remove it; if the tab comes back to a normal
+    // page, MEDIA_ATTACHED re-registers it.
+    removeTab(tabId)
+    void updateBadge()
+    pushStateToPopups()
+    return
+  }
   if (info.title) t.title = info.title
   if (info.url) t.url = info.url
   if (info.favIconUrl) t.favIconUrl = info.favIconUrl
@@ -559,6 +577,16 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   void scanTabs()
 })
 
+/**
+ * Consecutive unanswered PINGs per known tabId. A discarded tab still appears
+ * in `chrome.tabs.query({})` and its PING failure is invisible to the state
+ * map — without this counter the ghost row (with stale meters and dead
+ * balance inputs) survived every sweep until the user reloaded the tab.
+ */
+const pingFailures = new Map<number, number>()
+/** Drop a tab's ghost row after this many consecutive sweeps with no reply. */
+const MAX_PING_FAILURES = 3
+
 async function scanTabs(): Promise<void> {
   // Query every real http(s) tab in Chrome (not chrome://, not the popup).
   // This is the source of truth after a SW restart — the in-memory Map is
@@ -567,27 +595,61 @@ async function scanTabs(): Promise<void> {
   // state stayed empty forever.
   const allTabs = await chrome.tabs.query({})
   const knownTabIds = new Set(tabs.keys())
-  for (const tab of allTabs) {
-    const tabId = tab.id
-    if (tabId == null) continue
-    // Skip non-http(s) pages — content scripts don't run there, so PING
-    // would just throw "Receiving end does not exist".
-    if (!tab.url || !/^https?:/i.test(tab.url)) continue
-    // Refresh title/url/favIconUrl from Chrome's authoritative tab record.
-    // The content script only knows title+url; favIconUrl comes from here.
-    const known = tabs.get(tabId)
-    if (known) {
-      if (tab.title) known.title = tab.title
-      if (tab.url) known.url = tab.url
-      if (tab.favIconUrl) known.favIconUrl = tab.favIconUrl
-    }
-    try {
-      await sendToTab(tabId, { type: 'PING' })
-    } catch {
-      // Tab exists in Chrome but has no content script yet. Not an error.
-    }
-    knownTabIds.delete(tabId)
-  }
+  // Fan the PINGs out instead of awaiting them serially: O(tabs × RTT) of
+  // sequential round-trips on every wake-up and alarm tick delayed each tab's
+  // re-registration by all the tabs before it.
+  await Promise.all(
+    allTabs.map(async (tab) => {
+      const tabId = tab.id
+      if (tabId == null) return
+      // Skip non-http(s) pages — content scripts don't run there, so PING
+      // would just throw "Receiving end does not exist".
+      if (!tab.url || !/^https?:/i.test(tab.url)) return
+      // Refresh title/url/favIconUrl from Chrome's authoritative tab record.
+      // The content script only knows title+url; favIconUrl comes from here.
+      const known = tabs.get(tabId)
+      if (known) {
+        if (tab.title) known.title = tab.title
+        if (tab.url) known.url = tab.url
+        if (tab.favIconUrl) known.favIconUrl = tab.favIconUrl
+      }
+      let delivered: boolean
+      try {
+        await chrome.tabs.sendMessage(tabId, { type: 'PING' })
+        delivered = true
+      } catch {
+        // Tab exists in Chrome but has no content script yet. Not an error
+        // for unknown tabs — but a KNOWN tab that stopped answering is a
+        // discard/suspend candidate; prune it after a few silent sweeps.
+        delivered = false
+      }
+      knownTabIds.delete(tabId)
+      if (!known) return
+
+      if (tab.discarded) {
+        // Frozen by Chrome's memory saver: the content script can't respond
+        // and can't heartbeat either. Drop the row; reviving the tab (focus)
+        // makes the script re-announce via MEDIA_ATTACHED.
+        removeTab(tabId)
+        void updateBadge()
+        pushStateToPopups()
+        return
+      }
+      if (delivered) {
+        pingFailures.delete(tabId)
+      } else {
+        const strikes = (pingFailures.get(tabId) ?? 0) + 1
+        if (strikes >= MAX_PING_FAILURES) {
+          removeTab(tabId)
+          pingFailures.delete(tabId)
+          void updateBadge()
+          pushStateToPopups()
+        } else {
+          pingFailures.set(tabId, strikes)
+        }
+      }
+    }),
+  )
   // Any tabId we knew but Chrome no longer lists is gone — drop it.
   for (const staleTabId of knownTabIds) {
     removeTab(staleTabId)
@@ -630,6 +692,7 @@ export function resetState(): void {
   limiter = { ...DEFAULT_LIMITER_SETTINGS }
   lastBalanceMs = 0
   popupPorts.clear()
+  pingFailures.clear()
   settingsLoaded = loadSettings()
   logsLoaded = loadLogs()
 }

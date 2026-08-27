@@ -49,7 +49,11 @@ function handleThumbGrab(): void {
 }
 function handleThumbRelease(): void {
   dragging = false
-  dragValue.value = targetLufs.value
+  // Same as AutoBalance: flush the pending debounce instead of restoring the
+  // stale store value — release can land inside the trailing window (any
+  // click on the track does), and restoring early made the readout snap back
+  // then jump forward again once the SW response arrived.
+  debouncedSetTarget.flush()
 }
 
 // --- locale -----------------------------------------------------------------
@@ -139,6 +143,7 @@ onUnmounted(() => {
             type="button"
             class="locale-btn"
             :class="{ on: locale === opt.value }"
+            :aria-pressed="locale === opt.value"
             @click="pickLocale(opt.value)"
           >
             {{ opt.label.value }}
@@ -289,7 +294,10 @@ onUnmounted(() => {
   border: 1px solid var(--hair);
   padding: 10px 18px;
   cursor: pointer;
-  transition: all 0.18s;
+  transition:
+    color 0.18s,
+    border-color 0.18s,
+    background-color 0.18s;
 }
 
 .locale-btn:hover {
@@ -317,7 +325,9 @@ onUnmounted(() => {
   border: 1px solid var(--hair);
   padding: 11px 18px;
   cursor: pointer;
-  transition: all 0.18s;
+  transition:
+    color 0.18s,
+    border-color 0.18s;
 }
 
 .reload-btn:hover:not(:disabled) {

@@ -178,8 +178,11 @@ class LufsProcessor extends AudioWorkletProcessor {
 
   // ── True-peak tracker state (2.0) ───────────────────────────────────────
   // 5-sample ring of recent raw input (widest phase needs x[i-2]..x[i+2]).
+  // tpSamplesProcessed drives the 2-sample-delayed phase evaluation (must
+  // mirror TruePeakTracker in true-peak.ts — change both together).
   tpHistory: number[]
   tpHistIdx: number
+  tpSamplesProcessed: number
   tpMaxAbs: number
   tpSamplesSinceDecay: number
   readonly tpDecayInterval: number
@@ -248,6 +251,7 @@ class LufsProcessor extends AudioWorkletProcessor {
     // True-peak tracker init. Decay: ×0.85 every ~100 ms ⇒ ~3 s effective window.
     this.tpHistory = new Array<number>(5).fill(0)
     this.tpHistIdx = 0
+    this.tpSamplesProcessed = 0
     this.tpMaxAbs = 0
     this.tpSamplesSinceDecay = 0
     this.tpDecayInterval = Math.max(1, Math.floor(0.1 * sr))
@@ -543,19 +547,31 @@ class LufsProcessor extends AudioWorkletProcessor {
    * (inlined mirror of TruePeakTracker in true-peak.ts). Tracks the running
    * max |oversampled sample| with a ~3 s decay so the reading tracks recent
    * peaks. Called once per channel per sample.
+   *
+   * Causality: phases referencing x[i+1]/x[i+2] are finalised only after two
+   * more samples arrive (2-sample look-back delay), so each output's ring
+   * window is exactly [x[i-2] … x[i+2]] — identical taps to the offline
+   * oversample4x convolution. Evaluating immediately would substitute samples
+   * from 3–4 steps in the past and under-read inter-sample peaks by up to
+   * ~0.8 dB on HF/transient material.
    */
   private processTruePeak(x: number): void {
     this.tpHistory[this.tpHistIdx] = x
     this.tpHistIdx = (this.tpHistIdx + 1) % this.tpHistory.length
+    this.tpSamplesProcessed++
+    if (this.tpSamplesProcessed < 2) return // earlier outputs are all-zero anyway
+
+    // Finalise the output for sample i = newestIndex - 2. A tap at absolute
+    // index i+offset sits at ring "age" = 2 − offsets[k] from the newest
+    // sample (age 0 = newest; the widest phase reaches age 4 = oldest slot).
     const n = this.tpHistory.length
-    // Evaluate all 4 phases; offset 0 = newest sample, negative offsets = past.
     for (let p = 0; p < 4; p++) {
       const offs = TP_PHASE_OFFSETS[p]!
       const coeffs = TP_PHASE_COEFFS[p]!
       let sum = 0
       for (let k = 0; k < offs.length; k++) {
-        const back = -offs[k]! // offsets are negative for past samples
-        const hIdx = (this.tpHistIdx - 1 - back + n * 4) % n
+        const age = 2 - offs[k]!
+        const hIdx = (this.tpHistIdx - 1 - age + n * 8) % n
         sum += coeffs[k]! * this.tpHistory[hIdx]!
       }
       const a = Math.abs(sum)
@@ -633,6 +649,7 @@ class LufsProcessor extends AudioWorkletProcessor {
     // ad insert) doesn't carry the previous clip's peaks/dynamics forward.
     this.tpHistory.fill(0)
     this.tpHistIdx = 0
+    this.tpSamplesProcessed = 0
     this.tpMaxAbs = 0
     this.tpSamplesSinceDecay = 0
     this.lraWindow.fill(-Infinity)

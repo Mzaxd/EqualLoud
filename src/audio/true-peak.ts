@@ -140,17 +140,25 @@ export function computeTruePeakDb(input: ReadonlyArray<number>): number {
  * Cost: 4 phases × ≤5 taps = ≤20 multiplies/input-sample. Allocation-free
  * after construction.
  *
- * Note on causality: phases that reference x[i+1]/x[i+2] (future samples) are
- * evaluated with a 2-sample look-back delay so the tracker stays causal — it
- * processes sample `i` using samples `i-2..i+2` which, in streaming terms,
- * means the output for sample `i` is finalised when sample `i+2` arrives. The
- * 2-quantum latency (negligible at ~10 Hz reporting) is the price of measuring
- * true peak without buffering whole blocks.
+ * Note on causality: phases that reference x[i+1]/x[i+2] (future samples)
+ * cannot be evaluated as soon as x[i] arrives. Instead every appended sample
+ * finalises the output for sample `i-2` (a 2-sample look-back delay), so the
+ * ring window for a given output is exactly `[x[i-2] … x[i+2]]` — the same
+ * taps the offline {@link oversample4x} convolution uses. It processes sample
+ * `i` using samples `i-2..i+2` which, in streaming terms, means the output
+ * for sample `i` is finalised when sample `i+2` arrives. The 2-sample latency
+ * (negligible at ~10 Hz reporting) is the price of measuring true peak
+ * without buffering whole blocks. Skipping this delay — evaluating phases
+ * immediately with substituted past samples — under-reads inter-sample peaks
+ * by up to ~0.8 dB on HF/transient material; a strict parity test pins the
+ * streaming path to the offline path within 0.05 dB (true-peak.spec.ts).
  */
 export class TruePeakTracker {
   /** Ring of the last N input samples (N = max lookback across all phases = 5). */
   private readonly history: number[]
   private histWriteIdx = 0
+  /** Total samples fed so far (monotonic; drives the 2-sample-delayed eval). */
+  private samplesProcessed = 0
   /** Running max |oversampled sample|, decayed periodically. */
   private maxAbs = 0
   private samplesSinceDecay = 0
@@ -172,18 +180,25 @@ export class TruePeakTracker {
     // Append to the ring (newest sample at histWriteIdx-1 after increment).
     this.history[this.histWriteIdx] = x
     this.histWriteIdx = (this.histWriteIdx + 1) % this.history.length
+    this.samplesProcessed++
 
-    // Evaluate the 4 phases using the polyphase taps. The history ring is read
-    // so that offset 0 = the most recent sample, offset -1 = one before, etc.
+    // Finalise the output for sample i = (newestIndex - 2). Offline:
+    //   out[4i+p] = Σ coeffs[k] · x[i + offsets[k]]
+    // With the newest sample at absolute index N, a tap at absolute index
+    // i+offset has ring "age" = N − (i+offset) = 2 − offsets[k]. Age 0 is the
+    // newest sample; the widest phase reaches age 4 — exactly the 5-slot ring.
+    // (Evaluating this immediately after appending x[i] — without the delay —
+    // would map offset +1/+2 onto samples 4/3 steps in the past and under-read
+    // inter-sample peaks; see the class doc comment.)
+    if (this.samplesProcessed < 2) return // need x[0]; earlier outputs are all-zero anyway
     const n = this.history.length
     for (let p = 0; p < 4; p++) {
       const offsets = TP_PHASE_OFFSETS[p]!
       const coeffs = TP_PHASE_COEFFS[p]!
       let sum = 0
       for (let k = 0; k < offsets.length; k++) {
-        // offset = how many samples back from the newest. Map to ring index.
-        const back = -offsets[k]! // offsets are negative for past → back is positive
-        const hIdx = (this.histWriteIdx - 1 - back + n * 4) % n
+        const age = 2 - offsets[k]! // offset −2 → age 4 … offset +2 → age 0
+        const hIdx = (this.histWriteIdx - 1 - age + n * 8) % n
         sum += coeffs[k]! * this.history[hIdx]!
       }
       const a = Math.abs(sum)
@@ -208,6 +223,7 @@ export class TruePeakTracker {
   reset(): void {
     this.history.fill(0)
     this.histWriteIdx = 0
+    this.samplesProcessed = 0
     this.maxAbs = 0
     this.samplesSinceDecay = 0
   }

@@ -72,14 +72,14 @@ test.describe('EqualLoud core link', () => {
 
   test('popup shows the correct initial UI', async ({ context, extensionId }) => {
     const popup = await openPopup(context, extensionId)
-    // Title + version + slider range all rendered.
-    await expect(popup.locator('.app-title')).toHaveText('EqualLoud')
+    // Title + version + slider range all rendered. (v2.0 wordmark: .name)
+    await expect(popup.locator('.name')).toHaveText('EqualLoud')
     // Auto-balance defaults on, so the slider is visible.
     const slider = popup.locator('.target-slider')
     await expect(slider).toBeVisible()
     await expect(slider).toHaveAttribute('min', '-60')
     await expect(slider).toHaveAttribute('max', '0')
-    await expect(popup.locator('.target-value')).toContainText('-14 LUFS')
+    await expect(popup.locator('.target-row .v')).toContainText('-14 LUFS')
     await popup.close()
   })
 
@@ -136,8 +136,9 @@ test.describe('EqualLoud core link', () => {
     )
     // Quiet source gets a bigger boost than the loud source...
     expect(quietGain).toBeGreaterThan(loudGain)
-    // ...and that boost is clamped to the +12 dB ceiling.
-    expect(quietGain).toBe(12)
+    // ...and that boost is clamped to the per-tab ceiling (2.0 tuner raised it
+    // +12 → +24 dB; see DEFAULT_MAX_GAIN_DB in src/audio/config.ts).
+    expect(quietGain).toBe(24)
     // The loud source gets a positive-but-modest boost toward -14.
     expect(loudGain).toBeGreaterThan(0)
     expect(loudGain).toBeLessThan(quietGain)

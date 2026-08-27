@@ -84,7 +84,10 @@ function dismiss(): void {
   padding: 2px 4px;
   border-radius: 0;
   opacity: 0.7;
-  transition: all 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .notice-dismiss:hover {

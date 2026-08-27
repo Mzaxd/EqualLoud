@@ -23,7 +23,8 @@ test.describe('EqualLoud smoke', () => {
 
   test('popup page renders the EqualLoud title', async ({ context, extensionId }) => {
     const popup = await openPopup(context, extensionId)
-    await expect(popup.locator('.app-title')).toContainText('EqualLoud')
+    // v2.0 popup uses the serif wordmark (.name with <b>Loud</b> inside).
+    await expect(popup.locator('.name')).toContainText('EqualLoud')
     await popup.close()
   })
 
@@ -31,8 +32,9 @@ test.describe('EqualLoud smoke', () => {
     const state = await getState(context, extensionId)
     expect(state.settings.enabled).toBe(true)
     expect(state.settings.targetLufs).toBe(-14)
-    // Limiter default-on per PRD §17 Q1.
+    // Limiter default-on per PRD §17 Q1; threshold lowered −2 → −1 dBTP in
+    // 2.0 to align with EBU R128's delivery ceiling.
     expect(state.limiter.enabled).toBe(true)
-    expect(state.limiter.thresholdDb).toBe(-2)
+    expect(state.limiter.thresholdDb).toBe(-1)
   })
 })

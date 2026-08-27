@@ -75,7 +75,8 @@ describe('i18n configuration', () => {
 
   it('translates all status messages in English', () => {
     expect(i18n.global.t('popup.status.disabled')).toBe('Volume balancing is off')
-    expect(i18n.global.t('popup.status.waiting')).toBe('Waiting for audio...')
+    // Typographic ellipsis character (U+2026), not three dots.
+    expect(i18n.global.t('popup.status.waiting')).toBe('Waiting for audio…')
   })
 
   it('can translate key in Chinese via locale swap', () => {

@@ -66,7 +66,7 @@ describe('TabList', () => {
 
   it('shows empty state when no tabs', async () => {
     const wrapper = await mountComponent()
-    expect(wrapper.text()).toContain('Waiting for audio...')
+    expect(wrapper.text()).toContain('Waiting for audio\u2026')
   })
 
   it('shows hint text in empty state', async () => {
@@ -125,14 +125,14 @@ describe('TabList', () => {
 
     it('does not show collecting status when enough samples', async () => {
       const wrapper = await remountWith(mockStore({ tabs: [createMockTab()] }))
-      expect(wrapper.text()).not.toContain('Analyzing...')
+      expect(wrapper.text()).not.toContain('Analyzing\u2026')
     })
   })
 
   describe('tab with collecting status', () => {
     it('shows collecting status for tab with few samples', async () => {
       const wrapper = await remountWith(mockStore({ tabs: [createMockTab({ blockCount: 0 })] }))
-      expect(wrapper.text()).toContain('Analyzing...')
+      expect(wrapper.text()).toContain('Analyzing\u2026')
     })
   })
 

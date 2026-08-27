@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useSettingsStore } from '@/stores/settings'
@@ -53,7 +53,10 @@ function toggleLocale(): void {
   locale.value = settings.locale
 }
 
-const langLabel = locale.value === 'zh_CN' ? 'EN' : '中'
+// Reactive: the label names the locale you'll switch TO, so it must flip with
+// every toggle (a plain primitive captured at setup time froze on the initial
+// language and showed the wrong label after the first switch).
+const langLabel = computed(() => (locale.value === 'zh_CN' ? 'EN' : '中'))
 </script>
 
 <template>
@@ -100,13 +103,18 @@ const langLabel = locale.value === 'zh_CN' ? 'EN' : '中'
       </section>
 
       <div class="dots">
-        <span
+        <!-- Real buttons: the dots are clickable steps, so keyboard users get
+             them too (the old bare <span>s were invisible to keyboard/talkback). -->
+        <button
           v-for="s in steps"
           :key="s"
+          type="button"
           class="dot"
           :class="{ on: s === step }"
+          :aria-label="t('onboarding.goToStep', { n: s + 1 })"
+          :aria-current="s === step ? 'step' : undefined"
           @click="step = s"
-        ></span>
+        ></button>
       </div>
     </main>
 
@@ -262,6 +270,10 @@ const langLabel = locale.value === 'zh_CN' ? 'EN' : '中'
   border-radius: 50%;
   background: var(--hair);
   cursor: pointer;
+  /* Button reset — the visual stays a plain dot. */
+  appearance: none;
+  border: none;
+  padding: 0;
   transition:
     background 0.2s,
     transform 0.2s;
@@ -285,7 +297,10 @@ const langLabel = locale.value === 'zh_CN' ? 'EN' : '中'
   padding: 12px 22px;
   border-radius: 0;
   cursor: pointer;
-  transition: all 0.18s;
+  transition:
+    color 0.18s,
+    background-color 0.18s,
+    border-color 0.18s;
 }
 
 .btn.primary {

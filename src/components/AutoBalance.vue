@@ -95,9 +95,13 @@ function handleThumbGrab(): void {
 }
 function handleThumbRelease(): void {
   dragging = false
-  // Snap the local mirror back to the authoritative store value once the
-  // gesture ends, so a rejected/rounded SW response can't leave us drifting.
-  dragValue.value = targetLufs.value
+  // Commit the last drag value NOW instead of restoring the store value: the
+  // debounced SET_TARGET_LUFS is still in flight at release time (a plain
+  // click fires input → pointerup ~100 ms apart, inside the 150 ms window),
+  // and snapping `dragValue` back to the old store value produced a visible
+  // jump-back-then-forward-again stutter. Flush lets the SW round-trip settle
+  // the real value, which the watch() above then syncs into `dragValue`.
+  debouncedSetTarget.flush()
 }
 
 // Static scale ticks for the [-60, 0] LUFS axis. Majors carry a numeric label;

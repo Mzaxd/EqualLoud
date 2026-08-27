@@ -32,6 +32,22 @@ if (document.querySelector('video, audio')) {
   probe.observe(document.documentElement, { childList: true, subtree: true })
 }
 
+/**
+ * Set by the active session's `pagehide` teardown. If the page then comes back
+ * via back/forward cache (`pageshow` fires WITHOUT re-executing this script —
+ * same JS heap), everything it owned is still torn down: reporting timer,
+ * SW listener, media handles. A live-looking page would sit silent and
+ * unmanaged forever. The listener below restarts a fresh session in that case.
+ * Re-attaching works because audio-graph keeps claimed MediaElementSourceNodes
+ * alive in `takenSources` and reconnects them instead of re-creating.
+ */
+let needsRestart = false
+window.addEventListener('pageshow', () => {
+  if (!needsRestart) return
+  needsRestart = false
+  startEqualLoud()
+})
+
 function startEqualLoud(): void {
   // Content scripts can't read their own tab id (it's not exposed to the page
   // context). Every message we send carries this sentinel; the SW overwrites it
@@ -224,6 +240,9 @@ function startEqualLoud(): void {
     restoreHistory()
     notifySw({ type: 'TAB_UNLOAD', tabId: TAB_ID_SENTINEL })
     manager.stop()
+    // A bfcache restore will replay this heap without re-running the script;
+    // flag the revival listener (module scope) to start a fresh session.
+    needsRestart = true
   }
   window.addEventListener('pagehide', onPageHide)
 }
