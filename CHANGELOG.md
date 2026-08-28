@@ -5,6 +5,20 @@ All notable changes to **EqualLoud** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Mono loudness over-read (2.0.1 regression).** The worklet node's `explicit`
+  stereo wiring up-mixed single-channel media to identical L/R before
+  measurement, so the mono energy guard never fired and mono LUFS read ~+3 dB
+  high — quiet mono podcasts/clips were under-boosted. The node now uses
+  `clamped-max`: mono stays natively 1-channel while >2-channel (5.1) input is
+  still down-mixed to stereo by Chrome with the speakers table.
+- **Volume-fallback elements can re-attach.** Disposing a CORS-tainted or
+  takeover-failed handle left the element marked as claimed, so an SPA
+  re-inserting the same node never re-attached and stayed unmanaged for the
+  rest of the document. Dispose now un-claims on every teardown path.
+
 ## [2.0.1] — 2026-08-27
 
 ### Added

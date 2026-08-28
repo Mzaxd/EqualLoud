@@ -287,10 +287,12 @@ class LufsProcessor extends AudioWorkletProcessor {
     }
 
     // Detect mono vs stereo from the actual channel count delivered this quantum.
-    // The audio graph in audio-graph.ts is wired for stereo (outputChannelCount
-    // [2]); for a genuine mono source Chrome delivers a single channel array and
-    // we must NOT process it twice — duplicating L into R would double the
-    // K-weighted energy and bias LUFS ~3 dB high (10·log10(2) ≈ 3.01).
+    // The worklet node in audio-graph.ts uses channelCountMode 'clamped-max'
+    // (channelCount 2): a mono element is delivered natively as a single-channel
+    // array — only >2-channel inputs get down-mixed to stereo by Chrome. So a
+    // genuine mono source arrives as input.length===1 and we must NOT process
+    // it twice — duplicating L into R would double the K-weighted energy and
+    // bias LUFS ~3 dB high (10·log10(2) ≈ 3.01).
     const inputL = input[0]
     if (!inputL) return true
     const hasR = input.length >= 2 && input[1] && input[1]!.length > 0

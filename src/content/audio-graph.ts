@@ -349,6 +349,13 @@ export function attachAudioGraph(el: HTMLMediaElement): AudioGraphHandle | null 
     const origDispose = h.dispose.bind(h)
     h.dispose = () => {
       origDispose()
+      // Un-claim on every teardown path so the element stays re-attachable
+      // (SPA re-inserting the same node). The web-audio handle's own dispose
+      // deletes this too; the volume-fallback paths (CORS-tainted, failed
+      // takeover) ONLY get it here — without it a disposed fallback element
+      // stayed claimed forever and every re-attach returned null, leaving it
+      // unmanaged for the rest of the document.
+      attachedSources.delete(el)
       activeHandleCount = Math.max(0, activeHandleCount - 1)
       maybeCloseSharedContext()
     }
@@ -514,13 +521,19 @@ function buildWebAudioHandle(
         numberOfInputs: 1,
         numberOfOutputs: 1,
         outputChannelCount: [2],
-        // Downmix explicitly to stereo inside the node: the default 'max'
-        // channelCountMode would hand a 5.1 element's raw 6 channels to the
-        // processor, which reads only input[0]/input[1] — dropping centre/
-        // LFE energy and biasing LUFS several dB low (over-boosting those
-        // tabs into the limiter). 'speakers' interpretation = plain L/R downmix.
+        // Channel handling (Web Audio "computedNumberOfChannels" semantics):
+        // 'clamped-max' delivers the source's NATIVE channel count up to
+        // channelCount. A mono element therefore arrives as 1 channel and the
+        // processor's mono guard can skip the R pass — 'explicit' 2ch would
+        // up-mix mono to identical L/R and double the K-weighted energy,
+        // biasing mono LUFS +3 dB (the mono regression shipped in 2.0.1).
+        // >2-channel elements (5.1) are down-mixed to stereo by Chrome itself
+        // with the 'speakers' table (centre at 0.707 into L/R, LFE dropped) —
+        // the raw 6-channel input the default 'max' mode handed the processor
+        // (which reads only input[0]/input[1], dropping centre/LFE) cannot
+        // recur.
         channelCount: 2,
-        channelCountMode: 'explicit',
+        channelCountMode: 'clamped-max',
         channelInterpretation: 'speakers',
       })
     } catch (err) {
