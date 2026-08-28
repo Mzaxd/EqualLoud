@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 
 import { i18n } from '@/i18n'
 
@@ -20,6 +20,14 @@ const enRaw = JSON.parse(readFileSync(resolve(here, '../locales/en.json'), 'utf-
 const zhCNRaw = JSON.parse(readFileSync(resolve(here, '../locales/zh_CN.json'), 'utf-8'))
 
 describe('i18n configuration', () => {
+  // i18n.ts seeds its initial locale from navigator.language, which in the
+  // node test environment is the OS locale (zh-CN on a Chinese-language OS).
+  // Pin 'en' so the "in English" assertions below don't depend on the machine
+  // running them; the zh cases save/restore around their own swaps.
+  beforeAll(() => {
+    i18n.global.locale.value = 'en'
+  })
+
   it('has en messages available', () => {
     expect(enRaw).toBeDefined()
     expect(enRaw.popup.title).toBe('EqualLoud')
