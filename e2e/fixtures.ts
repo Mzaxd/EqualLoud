@@ -141,11 +141,53 @@ async function getExtensionId(context: BrowserContext): Promise<string> {
   return match[1]
 }
 
-/** Open the extension popup as a regular page (Playwright can't drive popups). */
+/**
+ * Open the extension popup as a regular full-size tab.
+ *
+ * A tab is NOT the real action popup (window-sized, no popup lifecycle), but
+ * it exercises the same page and store wiring, and CDP can drive it directly.
+ * For the real toolbar-click widget see popup-driver.ts — neither Playwright
+ * nor Puppeteer will adopt the popup target openPopup() creates (it is born
+ * as CDP type 'other' and both stacks only filter targets once, at creation),
+ * so the real popup must be driven over a raw CDP session.
+ */
 async function openPopup(context: BrowserContext, extensionId: string): Promise<Page> {
   const page = await context.newPage()
   await page.goto(`chrome-extension://${extensionId}/index.html`)
   return page
+}
+
+/** Open the media test page and start playback at a given gain (dB slider). */
+async function openMediaPage(
+  context: BrowserContext,
+  mediaUrl: string,
+  gainDb: number,
+): Promise<Page> {
+  const page = await context.newPage()
+  await page.goto(mediaUrl)
+  // The play handler inits audio lazily; filling the slider first ensures the
+  // right source volume before playback starts.
+  await page.waitForSelector('#playBtn')
+  await page.fill('#gainSlider', String(gainDb))
+  await page.click('#playBtn')
+  return page
+}
+
+/** Poll GET_STATE until at least N tabs are attached, or throw. */
+async function waitForTabs(
+  context: BrowserContext,
+  extensionId: string,
+  count: number,
+  timeoutMs = 20_000,
+): Promise<GetStateResponse> {
+  const deadline = Date.now() + timeoutMs
+  let last: GetStateResponse | null = null
+  while (Date.now() < deadline) {
+    last = await getState(context, extensionId)
+    if (last.tabs.length >= count) return last
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  throw new Error(`Timed out waiting for ${count} tabs; last state had ${last?.tabs.length ?? 0}`)
 }
 
 /**
@@ -227,4 +269,4 @@ export const test = base.extend<EqualLoudFixtures>({
 
 export { expect, EXTENSION_PATH, MEDIA_TEST_PATH }
 export type { GetStateResponse }
-export { openPopup, getState }
+export { openPopup, getState, openMediaPage, waitForTabs }

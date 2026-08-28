@@ -12,40 +12,7 @@
  * All state is read black-box via the popup's GET_STATE contract; we never
  * touch the SW's private Map.
  */
-import { test, expect, getState, openPopup, type GetStateResponse } from './fixtures'
-
-/** Open the media test page and start playback at a given gain (dB slider). */
-async function openMediaPage(
-  context: Parameters<typeof openPopup>[0],
-  mediaUrl: string,
-  gainDb: number,
-): Promise<import('@playwright/test').Page> {
-  const page = await context.newPage()
-  await page.goto(mediaUrl)
-  // Wait for the page's audio init to be ready (the play button handler does
-  // init lazily, but filling the slider first ensures the right volume).
-  await page.waitForSelector('#playBtn')
-  await page.fill('#gainSlider', String(gainDb))
-  await page.click('#playBtn')
-  return page
-}
-
-/** Poll GET_STATE until at least N tabs are attached, or timeout. */
-async function waitForTabs(
-  context: Parameters<typeof openPopup>[0],
-  extensionId: string,
-  count: number,
-  timeoutMs = 20_000,
-): Promise<GetStateResponse> {
-  const deadline = Date.now() + timeoutMs
-  let last: GetStateResponse | null = null
-  while (Date.now() < deadline) {
-    last = await getState(context, extensionId)
-    if (last.tabs.length >= count) return last
-    await new Promise((r) => setTimeout(r, 250))
-  }
-  throw new Error(`Timed out waiting for ${count} tabs; last state had ${last?.tabs.length ?? 0}`)
-}
+import { test, expect, getState, openPopup, openMediaPage, waitForTabs } from './fixtures'
 
 test.describe('EqualLoud core link', () => {
   test('content script attaches to a media element', async ({ context, extensionId, mediaUrl }) => {
