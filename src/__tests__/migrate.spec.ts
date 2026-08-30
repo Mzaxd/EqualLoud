@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
 
-import { DEFAULT_LIMITER_SETTINGS, DEFAULT_TARGET_LUFS, MAX_TARGET_LUFS, MIN_TARGET_LUFS } from '@/audio/config'
+import {
+  DEFAULT_LIMITER_SETTINGS,
+  DEFAULT_TARGET_LUFS,
+  MAX_TARGET_LUFS,
+  MIN_TARGET_LUFS,
+} from '@/audio/config'
 import type { LimiterSettings, Settings } from '@/messages/protocol'
 import { CURRENT_SCHEMA_VERSION, hydratePayload, migratePayload } from '@/storage/migrate'
 

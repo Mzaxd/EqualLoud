@@ -102,9 +102,9 @@ describe('computeBalanceGains warm-up boost cap', () => {
   it('stays bit-compatible with legacy behaviour when warm-up params are omitted', () => {
     // 显式传旧形状的 params → cap 关闭；raw = -14 - (-38) = +24，仅受 maxGainDb 钳制
     const tabs = [makeTab({ shortTerm: -38, blockCount: 1, maxGainDb: 24 })]
-    expect(
-      computeBalanceGains(tabs, -14, { minBlocks: 1, minGainDb: -60 }),
-    ).toEqual([{ tabId: 1, gainDb: 24 }])
+    expect(computeBalanceGains(tabs, -14, { minBlocks: 1, minGainDb: -60 })).toEqual([
+      { tabId: 1, gainDb: 24 },
+    ])
   })
 
   it('respects raw values below the cap untouched', () => {

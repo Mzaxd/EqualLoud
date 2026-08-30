@@ -41,8 +41,8 @@
  */
 
 import { GAIN_ATTACK_TC, GAIN_RISE_RATE_DB_PER_S, GAIN_SMOOTH_TC } from '@/audio/config'
-import { dbToGain } from '@/audio/lufs'
 import { GainSlew } from '@/audio/gain-slew'
+import { dbToGain } from '@/audio/lufs'
 import type { LimiterSettings } from '@/messages/protocol'
 import { createLogger } from '@/utils/logger'
 import lufsProcessorUrl from '@/worklets/lufs-processor?worker&url'
