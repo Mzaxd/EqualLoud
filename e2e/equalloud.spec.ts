@@ -44,8 +44,8 @@ test.describe('EqualLoud core link', () => {
     // Auto-balance defaults on, so the slider is visible.
     const slider = popup.locator('.target-slider')
     await expect(slider).toBeVisible()
-    await expect(slider).toHaveAttribute('min', '-60')
-    await expect(slider).toHaveAttribute('max', '0')
+    await expect(slider).toHaveAttribute('min', '-36')
+    await expect(slider).toHaveAttribute('max', '-6')
     await expect(popup.locator('.target-row .v')).toContainText('-14 LUFS')
     await popup.close()
   })

@@ -55,13 +55,13 @@ test.describe('real action popup (chrome.action.openPopup)', () => {
     expect(await popup.textOf('.name')).toBe('EqualLoud')
     expect(await popup.exists('.power.on')).toBe(true)
 
-    // Target slider at production defaults (−14 LUFS inside −60..0).
+    // Target slider at production defaults (−14 LUFS inside −36..−6).
     await popup.waitForSelector('.target-slider')
     const slider = await popup.evaluate(`(() => {
       const el = document.querySelector('.target-slider')
       return { min: el.min, max: el.max, value: el.value }
     })()`)
-    expect(slider).toEqual({ min: '-60', max: '0', value: '-14' })
+    expect(slider).toEqual({ min: '-36', max: '-6', value: '-14' })
     expect(await popup.textOf('.target-row .v')).toContain('-14 LUFS')
 
     // Footer version tracks package.json — the manifest/popup contract
