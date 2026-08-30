@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { MAX_TARGET_LUFS, MIN_TARGET_LUFS } from '@/audio/config'
 import { useDebouncedCallback } from '@/composables/useDebouncedRef'
 import { useSettingsStore } from '@/stores/settings'
 import { useTabsStore } from '@/stores/tabs'
@@ -119,8 +120,8 @@ onUnmounted(() => {
           <input
             type="range"
             class="slider"
-            min="-60"
-            max="0"
+            :min="MIN_TARGET_LUFS"
+            :max="MAX_TARGET_LUFS"
             step="1"
             :value="dragValue"
             :disabled="!isAutoBalancing"
