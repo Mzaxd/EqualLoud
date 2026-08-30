@@ -152,8 +152,9 @@ const scaleMajors = SCALE_MAJORS.map((l) => ({ lufs: l, pct: pct(l) }))
       />
     </div>
 
-    <!-- LUFS scale: majors labelled, minors bare. Shares the [-60,0] axis with
-         the fill + knob above, so "how loud is it now vs. target" is readable. -->
+    <!-- LUFS scale: majors labelled, minors bare. Shares the [−36,−6] axis
+         with the fill + knob above, so "how loud is it now vs. target" is
+         readable. -->
     <div class="c-scale">
       <div
         v-for="tk in scaleMinors"

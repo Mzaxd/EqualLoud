@@ -106,8 +106,7 @@ describe('AutoBalance', () => {
     it('drives the fill from the loudest balanced tab short-term', async () => {
       const wrapper = await mountEnabled()
       const fill = wrapper.find('.c-fill')
-      // shortTerm -18 → ((-18 − (−36)) / ((−6) − (−36))) × 100 = 60%. A 0.5px
-      // tolerance covers the CSS px rounding vs. the JS percentage string.
+      // shortTerm -18 → ((-18 − (−36)) / ((−6) − (−36))) × 100 = 60%.
       expect(fill.attributes('style')).toContain('width: 60%')
     })
   })
