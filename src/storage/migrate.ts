@@ -18,7 +18,7 @@
  * of `migrate_v0_v1` — the first migration, applied to any pre-versioning data.
  */
 
-import { DEFAULT_LIMITER_SETTINGS } from '@/audio/config'
+import { DEFAULT_LIMITER_SETTINGS, MAX_TARGET_LUFS, MIN_TARGET_LUFS } from '@/audio/config'
 import type { LimiterSettings, Settings } from '@/messages/protocol'
 
 /**
@@ -26,7 +26,7 @@ import type { LimiterSettings, Settings } from '@/messages/protocol'
  * stored `settings` or `limiter` objects, and append a new
  * `migrate_vN_vNplus1` step below.
  */
-export const CURRENT_SCHEMA_VERSION = 1
+export const CURRENT_SCHEMA_VERSION = 2
 
 /** What we expect to read back from storage (version-tagged payload). */
 export interface VersionedPayload {
@@ -93,11 +93,37 @@ function migrate_v0_v1(payload: VersionedPayload): VersionedPayload {
 }
 
 /**
+ * v1 → v2: the user-facing target-LUFS axis shrank from [−60, 0] to [−36, −6]
+ * (docs/superpowers/specs/2026-08-30-target-lufs-slider-range-design.md).
+ * Clamp a stored target into the new range so a value no slider surface can
+ * display (e.g. a −50 set under the old axis) converges to the nearest
+ * reachable setting instead of surviving as an invisible outlier. In-range
+ * values — every preset and the −14 factory default — pass through.
+ *
+ * Idempotent: clamped values are fixed points. Does NOT set __v — the
+ * migratePayload() loop owns version bookkeeping.
+ */
+function migrate_v1_v2(payload: VersionedPayload): VersionedPayload {
+  const s = payload.settings
+  if (s && typeof s.targetLufs === 'number' && Number.isFinite(s.targetLufs)) {
+    return {
+      ...payload,
+      settings: {
+        ...s,
+        targetLufs: Math.min(MAX_TARGET_LUFS, Math.max(MIN_TARGET_LUFS, s.targetLufs)),
+      },
+    }
+  }
+  return payload
+}
+
+/**
  * The ordered list of migrations. Index N migrates version N → N+1.
- * To add v1 → v2: append `{ from: 1, migrate: migrate_v1_v2 }` here.
+ * To add v2 → v3: append `{ from: 2, migrate: migrate_v2_v3 }` here.
  */
 const MIGRATIONS: { from: number; migrate: (p: VersionedPayload) => VersionedPayload }[] = [
   { from: 0, migrate: migrate_v0_v1 },
+  { from: 1, migrate: migrate_v1_v2 },
 ]
 
 /**

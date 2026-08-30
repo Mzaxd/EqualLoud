@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { DEFAULT_LIMITER_SETTINGS, DEFAULT_TARGET_LUFS } from '@/audio/config'
+import { DEFAULT_LIMITER_SETTINGS, DEFAULT_TARGET_LUFS, MAX_TARGET_LUFS, MIN_TARGET_LUFS } from '@/audio/config'
 import type { LimiterSettings, Settings } from '@/messages/protocol'
 import { CURRENT_SCHEMA_VERSION, hydratePayload, migratePayload } from '@/storage/migrate'
 
@@ -12,15 +12,15 @@ describe('migratePayload', () => {
     expect(out.__v).toBe(CURRENT_SCHEMA_VERSION)
   })
 
-  it('treats a missing __v as v0 and runs the v0→v1 step', () => {
+  it('treats a missing __v as v0 and runs the chain to current', () => {
     // Pre-versioning data: no __v, but valid settings/limiter fields.
     const out = migratePayload({
       settings: { enabled: false, targetLufs: -20 },
       limiter: { enabled: true, thresholdDb: -2, kneeDb: 0, ratio: 4, attackMs: 1, releaseMs: 100 },
     })
-    expect(out.__v).toBe(1)
+    expect(out.__v).toBe(2)
     expect(out.settings?.enabled).toBe(false)
-    expect(out.settings?.targetLufs).toBe(-20)
+    expect(out.settings?.targetLufs).toBe(-20) // in the new range, untouched
     expect(out.limiter?.ratio).toBe(4) // in range, unchanged
   })
 
@@ -41,6 +41,25 @@ describe('migratePayload', () => {
   it('clamps ratio below 1 up to 1', () => {
     const out = migratePayload({ limiter: { ratio: 0 } })
     expect(out.limiter?.ratio).toBe(1)
+  })
+
+  it('v1→v2 clamps a stored target below the new slider floor', () => {
+    const out = migratePayload({ __v: 1, settings: { targetLufs: -50 } })
+    expect(out.__v).toBe(2)
+    expect(out.settings?.targetLufs).toBe(MIN_TARGET_LUFS) // −50 → −36
+    // Idempotent: the clamped value is a fixed point.
+    expect(migratePayload(out)).toEqual(out)
+  })
+
+  it('v1→v2 clamps a stored target above the new slider ceiling', () => {
+    const out = migratePayload({ __v: 1, settings: { targetLufs: 0 } })
+    expect(out.settings?.targetLufs).toBe(MAX_TARGET_LUFS) // 0 → −6
+  })
+
+  it('v1→v2 passes in-range targets through untouched', () => {
+    const out = migratePayload({ __v: 1, settings: { targetLufs: -14 } })
+    expect(out.__v).toBe(2)
+    expect(out.settings?.targetLufs).toBe(-14)
   })
 
   it('drops settings fields of the wrong type (corrupt storage)', () => {
