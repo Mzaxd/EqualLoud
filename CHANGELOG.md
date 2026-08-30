@@ -5,7 +5,21 @@ All notable changes to **EqualLoud** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] — 2026-08-30
+
+### Added
+- **Target range enforced end-to-end.** The [−36, −6] LUFS bounds are now a
+  shared config constant, checked in every layer: the popup knob axis, the
+  Options slider, a service-worker clamp on `SET_TARGET_LUFS` messages, and a
+  v1→v2 storage migration that clamps any stored target into range and drops
+  corrupt non-numeric values instead of passing them through.
+
+### Changed
+- **Target-LUFS slider narrowed to [−36, −6].** The old [−60, 0] axis allowed
+  nonsense targets: −60 demands a ~+54 dB boost the protection limiter would
+  clamp into pumping mush, and 0 LUFS forces maximum compression. The popup
+  meter and knob are retargeted to the practical axis; existing stored
+  targets migrate automatically.
 
 ### Fixed
 - **Mono loudness over-read (2.0.1 regression).** The worklet node's `explicit`
