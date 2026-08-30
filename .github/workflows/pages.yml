@@ -1,0 +1,62 @@
+# Publishes the privacy policy (and a root landing that mirrors it) to GitHub
+# Pages at https://mzaxd.github.io/EqualLoud/privacy.html — the URL submitted
+# in the Chrome Web Store listing's "Privacy policy" field. A dead privacy URL
+# makes the item fail CWS publish compliance ("does not meet the requirements
+# to be published"), which is what blocked the v2.0.1/v2.1.0 CWS publish.
+#
+# privacy.html is a self-contained static page (inline styles, no build), so
+# there is nothing to compile — just place it at both /privacy.html (the URL
+# the store links to) and /index.html (so the bare project URL also works).
+#
+# First run needs Pages enabled: Settings → Pages → Source: "GitHub Actions".
+# configure-pages' enablement flag usually flips this automatically; if the
+# run fails on enablement, set it manually once.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['privacy.html', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy privacy policy to GitHub Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp privacy.html _site/privacy.html
+          cp privacy.html _site/index.html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
