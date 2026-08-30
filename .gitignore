@@ -40,3 +40,8 @@ test-results/
 playwright-report/
 e2e-report/
 /playwright/.cache/
+
+# Local AI/tooling session artifacts
+.zcode/
+.hallmark/
+.playwright-mcp/
