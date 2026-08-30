@@ -42,6 +42,8 @@ describe('AutoBalance', () => {
     // The combined meter: a groove (.c-track) + an invisible range input.
     expect(wrapper.find('.c-track').exists()).toBe(true)
     expect(wrapper.find('.target-slider').exists()).toBe(true)
+    expect(wrapper.find('.target-slider').attributes('min')).toBe('-36')
+    expect(wrapper.find('.target-slider').attributes('max')).toBe('-6')
   })
 
   it('marks the target as off (dimmed fill) when auto-balance is disabled', () => {
@@ -104,9 +106,9 @@ describe('AutoBalance', () => {
     it('drives the fill from the loudest balanced tab short-term', async () => {
       const wrapper = await mountEnabled()
       const fill = wrapper.find('.c-fill')
-      // shortTerm -18 → ((-18+60)/60)*100 = 70%. A 0.5px tolerance covers the
-      // CSS px rounding vs. the JS percentage string.
-      expect(fill.attributes('style')).toContain('width: 70%')
+      // shortTerm -18 → ((-18 − (−36)) / ((−6) − (−36))) × 100 = 60%. A 0.5px
+      // tolerance covers the CSS px rounding vs. the JS percentage string.
+      expect(fill.attributes('style')).toContain('width: 60%')
     })
   })
 })

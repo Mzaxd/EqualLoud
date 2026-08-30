@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { MAX_TARGET_LUFS, MIN_TARGET_LUFS } from '@/audio/config'
 import { useDebouncedCallback } from '@/composables/useDebouncedRef'
 import { useTabsStore } from '@/stores/tabs'
 
@@ -11,9 +12,9 @@ import { useTabsStore } from '@/stores/tabs'
  * The meter is a single groove that overlays two things: a fill bar whose
  * width tracks the *loudest currently-balanced tab's* short-term LUFS (the
  * "ambient glow" — the most prominent sound right now), and a draggable knob
- * that sets the target LUFS. Both share the [-60, 0] LUFS range so the knob
+ * that sets the target LUFS. Both share the [MIN_TARGET_LUFS, MAX_TARGET_LUFS] (−36/−6) LUFS range so the knob
  * sits visually where the target sits relative to live loudness. A scale row
- * beneath (-60 / -40 / -20 / 0 majors, plus minor ticks) lets you read both
+ * beneath (majors every 6 LU from −36 to −6, plus minor ticks) lets you read both
  * off the same axis.
  *
  * "Loudest balanced tab" is a popup-side heuristic (the SW has no notion of a
@@ -53,10 +54,11 @@ const primaryShortTerm = computed(() => {
   return loudest
 })
 
-/** Map a LUFS value in [-60, 0] to a [0, 100] percentage for the meter. */
+/** Map a LUFS value in [MIN_TARGET_LUFS, MAX_TARGET_LUFS] to [0, 100] %. */
 function pct(lufs: number): number {
   if (!Number.isFinite(lufs)) return 0
-  return Math.max(0, Math.min(100, ((lufs + 60) / 60) * 100))
+  const span = MAX_TARGET_LUFS - MIN_TARGET_LUFS
+  return Math.max(0, Math.min(100, ((lufs - MIN_TARGET_LUFS) / span) * 100))
 }
 
 const fillPct = computed(() => (isAutoBalancing.value ? pct(primaryShortTerm.value) : 0))
@@ -104,11 +106,12 @@ function handleThumbRelease(): void {
   debouncedSetTarget.flush()
 }
 
-// Static scale ticks for the [-60, 0] LUFS axis. Majors carry a numeric label;
-// minors are unlabelled short ticks. Percentages are precomputed (the axis is
+// Static scale ticks for the [MIN_TARGET_LUFS, MAX_TARGET_LUFS] axis. Majors
+// every 6 LU including both endpoints (−24 sits beside the broadcast preset);
+// minors every 3 LU offset from them. Percentages are precomputed (the axis is
 // fixed-width) so there is zero per-frame work.
-const SCALE_MINORS = [-50, -30, -10]
-const SCALE_MAJORS = [-60, -40, -20, 0]
+const SCALE_MINORS = [MIN_TARGET_LUFS + 3, -27, -21, -15, MAX_TARGET_LUFS - 3]
+const SCALE_MAJORS = [MIN_TARGET_LUFS, -30, -24, -18, -12, MAX_TARGET_LUFS]
 const scaleMinors = SCALE_MINORS.map((l) => ({ lufs: l, pct: pct(l) }))
 const scaleMajors = SCALE_MAJORS.map((l) => ({ lufs: l, pct: pct(l) }))
 </script>
@@ -135,8 +138,8 @@ const scaleMajors = SCALE_MAJORS.map((l) => ({ lufs: l, pct: pct(l) }))
       <input
         class="c-input target-slider"
         type="range"
-        min="-60"
-        max="0"
+        :min="MIN_TARGET_LUFS"
+        :max="MAX_TARGET_LUFS"
         step="1"
         :value="dragValue"
         :disabled="!isAutoBalancing"
