@@ -21,6 +21,8 @@ import {
   DEFAULT_MAX_GAIN_DB,
   DEFAULT_MIN_GAIN_DB,
   DEFAULT_TARGET_LUFS,
+  MAX_TARGET_LUFS,
+  MIN_TARGET_LUFS,
 } from '@/audio/config'
 import {
   isNotification,
@@ -310,7 +312,7 @@ function handleGetState() {
 }
 
 async function handleSetTargetLufs(targetLufs: number): Promise<{ settings: Settings }> {
-  settings.targetLufs = Math.max(-60, Math.min(0, targetLufs))
+  settings.targetLufs = Math.max(MIN_TARGET_LUFS, Math.min(MAX_TARGET_LUFS, targetLufs))
   await persistSettings()
   maybeBalance(true)
   pushStateToPopups()

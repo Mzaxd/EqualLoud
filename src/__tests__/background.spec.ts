@@ -162,6 +162,15 @@ describe('background service worker (EqualLoud coordinator)', () => {
     )
   })
 
+  it('clamps SET_TARGET_LUFS into the [−36, −6] slider range', async () => {
+    await background.handleMessage({ type: 'SET_TARGET_LUFS', targetLufs: -50 })
+
+    const state = (await background.handleMessage({ type: 'GET_STATE' })) as {
+      settings: { targetLufs: number }
+    }
+    expect(state.settings.targetLufs).toBe(-36)
+  })
+
   // --- per-tab balance bypass (A/B toggle) ------------------------------------
 
   it('pushes unity gain (0 dB) to a tab whose balance is toggled off', async () => {
