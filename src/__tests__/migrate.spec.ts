@@ -47,12 +47,13 @@ describe('migratePayload', () => {
     const out = migratePayload({ __v: 1, settings: { targetLufs: -50 } })
     expect(out.__v).toBe(2)
     expect(out.settings?.targetLufs).toBe(MIN_TARGET_LUFS) // −50 → −36
-    // Idempotent: the clamped value is a fixed point.
-    expect(migratePayload(out)).toEqual(out)
+    // Genuine fixed point: re-running from v1 converges to the same clamped record.
+    expect(migratePayload({ __v: 1, settings: { targetLufs: -50 } })).toEqual(out)
   })
 
   it('v1→v2 clamps a stored target above the new slider ceiling', () => {
     const out = migratePayload({ __v: 1, settings: { targetLufs: 0 } })
+    expect(out.__v).toBe(2)
     expect(out.settings?.targetLufs).toBe(MAX_TARGET_LUFS) // 0 → −6
   })
 
@@ -60,6 +61,14 @@ describe('migratePayload', () => {
     const out = migratePayload({ __v: 1, settings: { targetLufs: -14 } })
     expect(out.__v).toBe(2)
     expect(out.settings?.targetLufs).toBe(-14)
+  })
+
+  it('v1→v2 drops a non-finite stored target so hydrate falls back to the default', () => {
+    for (const bad of [Infinity, -Infinity, NaN]) {
+      const out = migratePayload({ __v: 1, settings: { targetLufs: bad } })
+      expect(out.__v).toBe(2)
+      expect(out.settings?.targetLufs).toBeUndefined()
+    }
   })
 
   it('drops settings fields of the wrong type (corrupt storage)', () => {

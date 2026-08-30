@@ -99,22 +99,26 @@ function migrate_v0_v1(payload: VersionedPayload): VersionedPayload {
  * display (e.g. a −50 set under the old axis) converges to the nearest
  * reachable setting instead of surviving as an invisible outlier. In-range
  * values — every preset and the −14 factory default — pass through.
+ * Non-finite / corrupt values (NaN, ±Infinity, wrong type) are dropped, not
+ * clamped, so hydratePayload falls back to DEFAULT_TARGET_LUFS.
  *
  * Idempotent: clamped values are fixed points. Does NOT set __v — the
  * migratePayload() loop owns version bookkeeping.
  */
 function migrate_v1_v2(payload: VersionedPayload): VersionedPayload {
   const s = payload.settings
-  if (s && typeof s.targetLufs === 'number' && Number.isFinite(s.targetLufs)) {
-    return {
-      ...payload,
-      settings: {
-        ...s,
-        targetLufs: Math.min(MAX_TARGET_LUFS, Math.max(MIN_TARGET_LUFS, s.targetLufs)),
-      },
-    }
+  if (!s) return payload
+  const picked: Partial<Settings> = { ...s }
+  const t = picked.targetLufs
+  if (typeof t === 'number' && Number.isFinite(t)) {
+    picked.targetLufs = Math.min(MAX_TARGET_LUFS, Math.max(MIN_TARGET_LUFS, t))
+  } else {
+    // Corrupt/non-finite (NaN, ±Infinity, wrong type): drop the field so
+    // hydratePayload falls back to DEFAULT_TARGET_LUFS — same convention as
+    // migrate_v0_v1. A bare clamp cannot rescue NaN (Math.min/max return it).
+    delete picked.targetLufs
   }
-  return payload
+  return { ...payload, settings: picked }
 }
 
 /**
