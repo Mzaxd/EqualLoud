@@ -14,6 +14,19 @@
 export const DEFAULT_TARGET_LUFS = -14
 
 /**
+ * Slider-range bounds for the user-facing target control (popup meter and
+ * options page). The old [−60, 0] axis wasted ~40 % of its travel: above
+ * −8 LUFS a target can never converge (a full-scale sine integrates to
+ * ≈ −3 LUFS and the −1 dBTP output limiter caps real program material near
+ * −9), and below −36 is near-silence nobody targets (lowest real delivery
+ * standard: broadcast −23). [−36, −6] covers every preset with ≥ 8 LU
+ * headroom above and 13 LU margin below, and roughly doubles the popup
+ * track's drag resolution (~5 px/LU → ~10 px/LU on the 348 px popup).
+ */
+export const MIN_TARGET_LUFS = -36
+export const MAX_TARGET_LUFS = -6
+
+/**
  * Per-tab maximum positive gain. Boosting quiet content toward the target is
  * desirable, but an unbounded boost amplifies the noise floor unpleasantly.
  *
